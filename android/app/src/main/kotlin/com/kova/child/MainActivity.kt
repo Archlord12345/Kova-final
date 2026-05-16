@@ -15,13 +15,16 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import com.kova.child.network.KovaNetworkModule
 
 class MainActivity : FlutterActivity() {
   private val SETUP_CHANNEL = "com.kova.child/setup"
   private val BLOCKER_CHANNEL = "com.kova.child/blocker"
+  private var networkModule: KovaNetworkModule? = null
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    networkModule = KovaNetworkModule(context, flutterEngine)
 
     // ── Register the 3 monitoring channels ──
     // KovaChannelManager is used by all native services
@@ -252,6 +255,8 @@ class MainActivity : FlutterActivity() {
   override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
     super.cleanUpFlutterEngine(flutterEngine)
     KovaChannelManager.unregister()
+    networkModule?.dispose()
+    networkModule = null
   }
 
   // ═══════════════════════════════════════════════
