@@ -447,10 +447,15 @@ class KovaInputMethodService : InputMethodService() {
     // ─────────────────────────────────────────────
 
     private fun haptic(view: View) {
-        view.performHapticFeedback(
-            HapticFeedbackConstants.KEYBOARD_TAP,
-            HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
-        )
+        try {
+            view.performHapticFeedback(
+                HapticFeedbackConstants.KEYBOARD_TAP,
+                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+            )
+        } catch (e: Exception) {
+            // Some MIUI/OEM devices throw resource errors for haptic constants
+            // Silently ignore to avoid keyboard latency
+        }
     }
 
     // ─────────────────────────────────────────────

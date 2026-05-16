@@ -4,7 +4,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' show min;
+
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -71,7 +71,7 @@ class NetworkSyncService {
   String _deviceId = '';
   CryptoService? _cryptoService;
   bool _isSyncing = false;
-  int _consecutiveFailures = 0;
+
 
   // Reconnect cooldown: prevents stampede when multiple alerts fire while LAN is down
   DateTime? _lastReconnectAttempt;
@@ -569,8 +569,55 @@ class NetworkSyncService {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    // Pure local mode doesn't poll an internet server.
-    // Parent receives alerts actively via WebSocket or LAN broadcast.
+    // Pure local mode: no relay polling.
+    // Instead, periodically ensure the parent stays connected to the child
+    // via WebSocket over LAN (reconnect if connection dropped).
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _ensureParentConnected();
+    });
+    // Immediate first check
+    _ensureParentConnected();
+  }
+
+  /// Parent-side: ensure WebSocket connection to child's server is alive.
+  /// If not connected, re-discover via mDNS and reconnect.
+  Future<void> _ensureParentConnected() async {
+    if (_role != 'parent' || _pairToken.isEmpty) return;
+
+    if (_lanData.isConnected && _lanData.isSocketHealthy) {
+      // Connection is healthy — nothing to do
+      return;
+    }
+
+    debugPrint('🔁 [PARENT POLL] Not connected to child — attempting reconnect...');
+
+    // Try to find child via discovery
+    final peer = _lanDiscovery.pairedPeer;
+    if (peer != null) {
+      debugPrint('🔍 [PARENT POLL] Found child at ${peer.ipAddress}:${peer.port}');
+      try {
+        final connected = await _lanData.connectToParent(
+          peer.ipAddress,
+          peer.port,
+          _pairToken,
+        );
+        if (connected) {
+          debugPrint('✅ [PARENT POLL] Reconnected to child server');
+          _updateState(NetworkConnectionState.lan);
+        } else {
+          debugPrint('❌ [PARENT POLL] Connection failed');
+        }
+      } catch (e) {
+        debugPrint('❌ [PARENT POLL] Reconnect error: $e');
+      }
+    } else {
+      debugPrint('⏳ [PARENT POLL] No child peer found via discovery yet');
+      // Re-trigger mDNS discovery if not running
+      if (!_lanDiscovery.isRunning) {
+        await _lanDiscovery.start(role: 'parent');
+        debugPrint('📡 [PARENT POLL] Restarted mDNS discovery');
+      }
+    }
   }
 
   void _startSyncLoop() {
@@ -673,7 +720,7 @@ class NetworkSyncService {
   Future<void> _pollAcks() async {}
 
 
-  Future<void> _pollAlerts() async {}
+
 
   // ─────────────────────────────────────────────
   // Connection Management
