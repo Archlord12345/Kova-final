@@ -1,6 +1,5 @@
 // shared/services/lan_data_service.dart
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:kova/shared/models/network_alert.dart';
 import 'package:kova/shared/services/native_network_service.dart';
@@ -34,6 +33,7 @@ class LanDataService {
 
   bool get isConnected => _isConnected;
   bool get isSocketHealthy => _isConnected; // Native WebSockets handle internal ping/pong health
+  bool get isServerHealthy => _isConnected;
 
   StreamSubscription? _messageSub;
   StreamSubscription? _connectionSub;
@@ -85,10 +85,34 @@ class LanDataService {
     }
   }
 
+  Future<bool> connectToParent(String ip, int port, [String pairToken = '']) async {
+    if (pairToken.isNotEmpty) {
+      _pairToken = pairToken;
+    }
+    try {
+      await NativeNetworkService().connectToParent(ip, port);
+      // Send handshake
+      final handshake = {
+        'type': 'handshake',
+        'role': 'child',
+        'pairToken': _pairToken,
+      };
+      await NativeNetworkService().sendMessage(handshake);
+      return true;
+    } catch (e) {
+      print('❌ [LAN DATA] Connection failed: $e');
+      return false;
+    }
+  }
+
   Future<void> disconnect() async {
     await NativeNetworkService().disconnectClient();
     _isConnected = false;
     _connectionStateController.add(false);
+  }
+
+  Future<void> disconnectClient() async {
+    await disconnect();
   }
 
   Future<bool> sendAlert(Map<String, dynamic> alertJson) async {
@@ -100,6 +124,41 @@ class LanDataService {
       'alert': alertJson,
     };
     return await NativeNetworkService().sendMessage(payload);
+  }
+
+  bool sendAlertSafe(NetworkAlertFull alert) {
+    if (!_isConnected) return false;
+    final payload = {
+      'type': 'alert',
+      'pairToken': _pairToken,
+      'alert': alert.toJson(),
+    };
+    try {
+      NativeNetworkService().sendMessage(payload);
+      return true;
+    } catch (e) {
+      print('❌ [LAN DATA] Send alert error: $e');
+      return false;
+    }
+  }
+
+  void sendChildProfile({
+    required String childId,
+    required String name,
+    required int age,
+  }) {
+    if (!_isConnected) return;
+    final payload = {
+      'type': 'child_profile',
+      'childId': childId,
+      'name': name,
+      'age': age,
+    };
+    try {
+      NativeNetworkService().sendMessage(payload);
+    } catch (e) {
+      print('❌ [LAN DATA] Send child profile error: $e');
+    }
   }
   
   void _handleIncomingMessage(Map<String, dynamic> json) {

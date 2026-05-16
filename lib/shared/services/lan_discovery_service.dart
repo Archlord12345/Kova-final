@@ -4,7 +4,6 @@ import 'package:kova/shared/models/network_alert.dart';
 import 'package:kova/shared/services/local_storage.dart';
 import 'package:kova/shared/services/crypto_service.dart';
 import 'package:kova/shared/services/native_network_service.dart';
-import 'package:flutter/foundation.dart';
 
 class LanDiscoveryService {
   static final LanDiscoveryService _instance = LanDiscoveryService._();
@@ -187,8 +186,8 @@ class LanDiscoveryService {
         deviceId: deviceId,
         role: role,
         pairCode: pairCode,
-        encryptedPairToken: encToken,
-        encryptedTokenIv: encIv,
+        encryptedPairToken: encToken ?? '',
+        encryptedTokenIv: encIv ?? '',
         discoveredAt: DateTime.now(),
       );
 
