@@ -27,17 +27,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   StreamSubscription<NetworkAlertSummary>? _networkAlertSub;
 
   List<double> _weeklyScores = List.filled(7, 100.0);
-  bool _has5DayStreak = false;
-  bool _isTopScorer = false;
-  bool _hasKindWords = false;
-  bool _isWeekChampion = false;
-  bool _isPerfectWeek = false;
-  bool _is100Club = false;
+  bool _has5DayStreak = true;
+  bool _isTopScorer = true;
+  bool _hasKindWords = true;
+  bool _isWeekChampion = true;
+  bool _isPerfectWeek = true;
+  bool _is100Club = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _loadData();
+    });
     
     // Listen for local alerts from detection orchestrator
     _alertSub = DetectionOrchestrator.instance.onNewAlert.listen((alert) {
@@ -63,6 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _alertSub?.cancel();
     _networkAlertSub?.cancel();
     super.dispose();
@@ -83,7 +89,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _calculateStats(alerts, child);
         }
       }
-      }
     } else {
       if (mounted) {
         setState(() {
@@ -103,7 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final childName = _child?.name ?? 'Alex';
-    final score = _child?.score ?? 92;
+    final score = _child?.score ?? 100;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
@@ -114,24 +119,104 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Text(
-                'Hello $childName 👋',
-                style: GoogleFonts.inter(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF2C2C54),
+              // Header with Logout
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello $childName 👋',
+                        style: GoogleFonts.inter(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C2C54),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Here's how you're doing",
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          color: const Color(0xFF888899),
+                        ),
+                      ),
+                    ],
+                  ),
+                  InkWell(
+                    onTap: () {
+                      Navigator.of(context).pop();
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8E8EE),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.logout_rounded, color: Color(0xFF2C2C54), size: 24),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Protection Active Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF10B981), Color(0xFF059669)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.shield_rounded, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Protection is Active',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Scanning for threats in real-time',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                "Here's how you're doing",
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  color: const Color(0xFF888899),
-                ),
-              ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
 
               // Score Ring
               Center(
@@ -360,9 +445,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Array to hold scores for the current week, index 0=Mon, 6=Sun
     final weeklyScores = List.filled(7, 100.0);
     
-    // Set future days to 10 for the chart visual
+    // Set future days to 0.0 for the chart visual
     for (int i = currentDayOfWeek; i < 7; i++) {
-      weeklyScores[i] = 10.0;
+      weeklyScores[i] = 0.0;
     }
 
     // Array to hold scores for the past 7 rolling days (for badges)
@@ -425,7 +510,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildChartBar(String day, double heightPct, Color color) {
     final double maxHeight = 100.0;
-    final double actualHeight = (heightPct / 100.0) * maxHeight;
+    // For future days (0.0 height), give a tiny 4px bar so it doesn't look broken
+    final double actualHeight = heightPct == 0.0 ? 4.0 : (heightPct / 100.0) * maxHeight;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
