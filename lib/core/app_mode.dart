@@ -13,15 +13,18 @@ class AppModeManager {
   static const String _childIdKey = 'child_id';
   static const String _parentPinHashKey = 'parent_pin_hash';
 
-  /// Get the currently configured app mode
+  static AppMode _currentMode = AppMode.notConfigured;
+  static AppMode get currentMode => _currentMode;
+
   static Future<AppMode> getMode() async {
     final prefs = await SharedPreferences.getInstance();
     final mode = prefs.getString(_modeKey);
-    return switch (mode) {
+    _currentMode = switch (mode) {
       'parent' => AppMode.parent,
       'child' => AppMode.child,
       _ => AppMode.notConfigured,
     };
+    return _currentMode;
   }
 
   /// Initialize app as PARENT MODE with a PIN
@@ -31,6 +34,7 @@ class AppModeManager {
     final hash = sha256.convert(utf8.encode(pin)).toString();
     await prefs.setString(_modeKey, 'parent');
     await prefs.setString(_parentPinHashKey, hash);
+    _currentMode = AppMode.parent;
   }
 
   /// Initialize app as CHILD MODE with the resolved child UUID.
@@ -42,6 +46,7 @@ class AppModeManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_modeKey, 'child');
     await prefs.setString(_childIdKey, childId);
+    _currentMode = AppMode.child;
 
     return true;
   }
@@ -74,6 +79,7 @@ class AppModeManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_modeKey);
     await prefs.remove(_childIdKey);
+    _currentMode = AppMode.notConfigured;
     return true;
   }
 

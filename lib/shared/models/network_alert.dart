@@ -7,6 +7,7 @@ class NetworkAlertSummary {
   final String alertType;
   final String childName;
   final DateTime timestamp;
+  final String contentPreview;
 
   NetworkAlertSummary({
     required this.severity,
@@ -14,6 +15,7 @@ class NetworkAlertSummary {
     required this.alertType,
     required this.childName,
     required this.timestamp,
+    this.contentPreview = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +24,7 @@ class NetworkAlertSummary {
     'alertType': alertType,
     'childName': childName,
     'timestamp': timestamp.toIso8601String(),
+    'contentPreview': contentPreview,
   };
 
   factory NetworkAlertSummary.fromJson(Map<String, dynamic> json) {
@@ -33,6 +36,7 @@ class NetworkAlertSummary {
       timestamp: json['timestamp'] != null
           ? DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now()
           : DateTime.now(),
+      contentPreview: json['contentPreview'] as String? ?? '',
     );
   }
 }
