@@ -11,6 +11,7 @@ import 'package:kova/parent/services/alert_history_service.dart';
 import 'package:kova/shared/services/local_storage.dart';
 import 'package:kova/shared/services/network_sync_service.dart';
 import 'package:kova/local_backend/database/database_service.dart';
+import 'package:kova/parent/services/app_control_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -580,6 +581,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               showDivider: false,
             ),
           ]),
+          _buildSection('Network', [
+            _buildSettingItem(
+              Icons.wifi_off_rounded,
+              'Offline Mode (LAN only)',
+              subtitle: 'Use local network instead of cloud server',
+              trailing: Transform.scale(
+                scale: 0.8,
+                child: Switch.adaptive(
+                  value: LocalStorage.getBool('offline_mode', false),
+                  onChanged: (v) async {
+                    await LocalStorage.setBool('offline_mode', v);
+                    setState(() {});
+                    // Restart network sync to apply changes
+                    final role = LocalStorage.getString('pair_token').isNotEmpty && 
+                                 AppModeManager.currentMode == AppMode.child 
+                                 ? 'child' : 'parent';
+                    NetworkSyncService.instance.stop();
+                    NetworkSyncService.instance.start(role: role);
+                  },
+                  activeTrackColor: KovaColors.primary,
+                ),
+              ),
+            ),
+            if (activeChild != null)
+              _buildSettingItem(
+                Icons.vibration_rounded,
+                'Ping Child Device',
+                subtitle: 'Test connection and vibrate phone',
+                trailing: _buildActionButton('Ping', onTap: _pingChild),
+                showDivider: false,
+              )
+            else
+              const SizedBox.shrink(),
+          ]),
           if (_isDeveloperMode)
           _buildSection('Server', [
             _buildSettingItem(
@@ -788,6 +823,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pingChild() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final activeChild = context.read<DashboardDataService>().activeChild;
+    if (activeChild == null) return;
+    
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Sending ping to ${activeChild.name}...', style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+        backgroundColor: KovaColors.primary,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+    
+    try {
+      final appControl = context.read<AppControlService>();
+      await appControl.pingChild();
+      
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Ping command sent successfully!', style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+          backgroundColor: KovaColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to ping: $e', style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+          backgroundColor: KovaColors.danger,
+        ),
+      );
+    }
   }
 
   Future<void> _checkServerHealth() async {

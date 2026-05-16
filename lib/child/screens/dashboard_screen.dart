@@ -6,6 +6,8 @@ import 'package:kova/local_backend/repositories/child_repository.dart';
 import 'package:kova/local_backend/repositories/alert_repository.dart';
 import 'package:kova/shared/services/network_sync_service.dart';
 import 'package:kova/shared/models/network_alert.dart';
+import 'package:kova/shared/services/local_storage.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -34,6 +36,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isPerfectWeek = true;
   bool _is100Club = true;
   Timer? _refreshTimer;
+  String _parentName = '';
+  static const _setupChannel = MethodChannel('com.kova.child/setup');
 
   @override
   void initState() {
@@ -62,6 +66,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } else if (alert.alertType == 'parent_unblock') {
         debugPrint('🔓 [CHILD] Received parent unblock command for ${alert.app}');
         DetectionOrchestrator.instance.unblockApp(alert.app);
+      } else if (alert.alertType == 'parent_ping') {
+        debugPrint('🔔 [CHILD] Received ping from parent!');
+        if (alert.contentPreview.isNotEmpty && alert.contentPreview != 'Parent') {
+          setState(() {
+            _parentName = alert.contentPreview;
+          });
+          LocalStorage.setString('child_parent_name', _parentName);
+        }
+        _setupChannel.invokeMethod('ping').catchError((e) {
+          debugPrint('❌ [CHILD] Failed to invoke native ping: $e');
+        });
       }
     });
   }
@@ -75,6 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
+    _parentName = LocalStorage.getString('child_parent_name');
     final childId = await AppModeManager.getChildId();
     if (childId != null) {
       final child = await _childRepository.getById(childId);
@@ -127,7 +143,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Hello $childName 👋',
+                        'Protection Active 👋',
                         style: GoogleFonts.inter(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -136,7 +152,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Here's how you're doing",
+                        _parentName.isNotEmpty ? 'Géré par $_parentName' : 'Géré par votre parent',
                         style: GoogleFonts.inter(
                           fontSize: 16,
                           color: const Color(0xFF888899),

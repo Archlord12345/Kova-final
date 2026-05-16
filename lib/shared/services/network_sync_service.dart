@@ -60,6 +60,8 @@ class NetworkSyncService {
   final _lanData = LanDataService();
   final _pendingSyncRepo = PendingSyncRepository();
 
+  bool get isOfflineMode => LocalStorage.getBool('offline_mode', false);
+
   Timer? _pollTimer;
   Timer? _syncTimer;
   StreamSubscription? _connectivitySub;
@@ -504,20 +506,35 @@ class NetworkSyncService {
       }
     }
 
-    // Try LAN
-    if (_lanData.isConnected && _lanData.isSocketHealthy) {
-      debugPrint('📡 [PUSH ALERT] Sending via LAN...');
+    // Relay is primary unless in offline mode
+    if (!isOfflineMode) {
+      debugPrint('📡 [PUSH ALERT] Attempting Relay server first...');
       try {
-        final success = await _lanData.sendAlertSafe(alert);
-        debugPrint(success
-            ? '✅ [PUSH ALERT] LAN SUCCESS'
-            : '❌ [PUSH ALERT] LAN returned false');
-        delivered = success;
+        final success = await _pushAlertToRelay(alert);
+        if (success) delivered = true;
       } catch (e) {
-        debugPrint('❌ [PUSH ALERT] LAN exception: $e');
+        debugPrint('❌ [PUSH ALERT] Relay failed: $e');
       }
     } else {
-      debugPrint('❌ [PUSH ALERT] LAN unavailable');
+      debugPrint('📴 [PUSH ALERT] Offline mode enabled, skipping Relay.');
+    }
+
+    // Try LAN if Relay failed or Offline mode enabled
+    if (!delivered) {
+      if (_lanData.isConnected && _lanData.isSocketHealthy) {
+        debugPrint('📡 [PUSH ALERT] Sending via LAN...');
+        try {
+          final success = await _lanData.sendAlertSafe(alert);
+          debugPrint(success
+              ? '✅ [PUSH ALERT] LAN SUCCESS'
+              : '❌ [PUSH ALERT] LAN returned false');
+          delivered = success;
+        } catch (e) {
+          debugPrint('❌ [PUSH ALERT] LAN exception: $e');
+        }
+      } else {
+        debugPrint('❌ [PUSH ALERT] LAN unavailable');
+      }
     }
 
     if (delivered && itemId != null) {
@@ -546,16 +563,8 @@ class NetworkSyncService {
       }
     }
 
-    // Fallback to Railway relay (summary only)
     if (!delivered) {
-      await _pushAlertToRelay(alert);
-      // We consider it 'delivered' to the relay queue, but we might still want to retry LAN later
-      // The old behavior queued it anyway if LAN failed. Let's keep the queue logic below
-      // but mark it delivered if relay success so it doesn't queue indefinitely.
-    }
-
-    if (!delivered) {
-      debugPrint('💾 [PUSH ALERT] Saving to local queue for LAN retry...');
+      debugPrint('💾 [PUSH ALERT] Saving to local queue for retry...');
       try {
         await _pendingSyncRepo.insert(
           PendingSync(
@@ -564,7 +573,7 @@ class NetworkSyncService {
             payload: jsonEncode(alert.toJson()),
           ),
         );
-        debugPrint('✅ [PUSH ALERT] Queued for retry when parent reconnects');
+        debugPrint('✅ [PUSH ALERT] Queued for retry');
       } catch (e) {
         debugPrint('❌ [PUSH ALERT] Queue failed: $e');
       }
@@ -581,8 +590,8 @@ class NetworkSyncService {
   // ─────────────────────────────────────────────
 
   /// Push alert summary to Railway relay
-  Future<void> _pushAlertToRelay(NetworkAlertFull alert) async {
-    if (_pairToken.isEmpty) return;
+  Future<bool> _pushAlertToRelay(NetworkAlertFull alert) async {
+    if (_pairToken.isEmpty) return false;
     _cryptoService ??= CryptoService(_pairToken);
 
     try {
@@ -592,6 +601,7 @@ class NetworkSyncService {
         alertType: alert.alertType,
         childName: alert.childName,
         timestamp: alert.timestamp,
+        contentPreview: alert.contentPreview, // Include preview for ping text
       );
 
       final jsonStr = jsonEncode(summary.toJson());
@@ -609,11 +619,14 @@ class NetworkSyncService {
 
       if (response.statusCode == 201) {
         debugPrint('📤 Alert pushed to relay (summary)');
+        return true;
       } else {
         debugPrint('❌ Alert push failed: ${response.body}');
+        return false;
       }
     } catch (e) {
       debugPrint('❌ Alert push error: $e');
+      return false;
     }
   }
 
@@ -621,31 +634,39 @@ class NetworkSyncService {
     if (_pairToken.isEmpty) return;
     _cryptoService ??= CryptoService(_pairToken);
 
-    try {
-      final jsonStr = jsonEncode(history.toJson());
-      final encrypted = _cryptoService!.encryptPayload(jsonStr);
+    bool delivered = false;
 
-      final response = await http.post(
-        Uri.parse('$_relayBaseUrl/api/history/push'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_pairToken',
-        },
-        body: jsonEncode(
-            {'encryptedData': encrypted['data'], 'iv': encrypted['iv']}),
-      );
+    // Try Relay first unless offline mode
+    if (!isOfflineMode) {
+      try {
+        final jsonStr = jsonEncode(history.toJson());
+        final encrypted = _cryptoService!.encryptPayload(jsonStr);
 
-      if (response.statusCode == 201) {
-        debugPrint('📤 History pushed to relay');
-        if (itemId != null) {
-          await _pendingSyncRepo.deleteList([itemId]);
+        final response = await http.post(
+          Uri.parse('$_relayBaseUrl/api/history/push'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_pairToken',
+          },
+          body: jsonEncode(
+              {'encryptedData': encrypted['data'], 'iv': encrypted['iv']}),
+        );
+
+        if (response.statusCode == 201) {
+          debugPrint('📤 History pushed to relay');
+          delivered = true;
+          if (itemId != null) {
+            await _pendingSyncRepo.deleteList([itemId]);
+          }
+        } else {
+          debugPrint('❌ History push failed: ${response.body}');
         }
-      } else {
-        debugPrint('❌ History push failed: ${response.body}');
+      } catch (e) {
+        debugPrint('❌ History push error: $e');
       }
-    } catch (e) {
-      debugPrint('❌ History push error: $e');
     }
+    
+    // Optional: LAN fallback for history could be implemented here
   }
 
   // ─────────────────────────────────────────────
@@ -656,12 +677,16 @@ class NetworkSyncService {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _ensureParentConnected();
-      _pollAlerts();
-      _pollHistory();
+      if (!isOfflineMode) {
+        _pollAlerts();
+        _pollHistory();
+      }
     });
     _ensureParentConnected();
-    _pollAlerts();
-    _pollHistory();
+    if (!isOfflineMode) {
+      _pollAlerts();
+      _pollHistory();
+    }
   }
 
   /// Parent-side: ensure WebSocket connection to child's server is alive.

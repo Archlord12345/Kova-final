@@ -211,6 +211,29 @@ class MainActivity : FlutterActivity() {
           }
           result.success(true)
         }
+        "ping" -> {
+          try {
+            val vibrator = getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+              vibrator.vibrate(android.os.VibrationEffect.createOneShot(2000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+              @Suppress("DEPRECATION")
+              vibrator.vibrate(2000)
+            }
+            
+            try {
+              val notification = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+              val r = android.media.RingtoneManager.getRingtone(applicationContext, notification)
+              r.play()
+            } catch (e: Exception) {
+              Log.e("KOVA_PING", "Error playing notification sound", e)
+            }
+            result.success(true)
+          } catch (e: Exception) {
+            Log.e("KOVA_PING", "Error executing ping", e)
+            result.error("PING_FAILED", e.message, null)
+          }
+        }
         else -> result.notImplemented()
       }
     }

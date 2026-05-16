@@ -184,6 +184,35 @@ class AppControlService extends ChangeNotifier {
       rethrow;
     }
   }
+
+  /// Ping the child device
+  Future<void> pingChild() async {
+    try {
+      debugPrint('🔔 [APP_CONTROL] Sending ping command to child');
+      
+      final parentName = LocalStorage.getString('parent_name');
+      final pName = parentName.isNotEmpty ? parentName : 'Parent';
+      
+      await _networkSync.pushAlert(NetworkAlertFull(
+        childName: _children.isNotEmpty ? _children.first.name : 'unknown',
+        app: 'system',
+        alertType: 'parent_ping',
+        severity: 'info',
+        aiConfidence: 0.0,
+        contentPreview: pName, // Send parent name in contentPreview
+        scoreText: 0.0,
+        scoreImage: 0.0,
+        scoreGrooming: 0.0,
+        scoreDelta: 0,
+        timestamp: DateTime.now(),
+      ));
+      
+      debugPrint('✅ [APP_CONTROL] Ping command sent');
+    } catch (e) {
+      debugPrint('❌ [APP_CONTROL] Failed to ping child: $e');
+      rethrow;
+    }
+  }
 }
 
 // Data class for app control info
