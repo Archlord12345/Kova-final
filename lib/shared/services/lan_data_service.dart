@@ -126,7 +126,7 @@ class LanDataService {
     return await NativeNetworkService().sendMessage(payload);
   }
 
-  bool sendAlertSafe(NetworkAlertFull alert) {
+  Future<bool> sendAlertSafe(NetworkAlertFull alert) async {
     if (!_isConnected) return false;
     final payload = {
       'type': 'alert',
@@ -134,8 +134,13 @@ class LanDataService {
       'alert': alert.toJson(),
     };
     try {
-      NativeNetworkService().sendMessage(payload);
-      return true;
+      final success = await NativeNetworkService().sendMessage(payload);
+      if (!success) {
+        // If native send failed, connection might be dead
+        _isConnected = false;
+        _connectionStateController.add(false);
+      }
+      return success;
     } catch (e) {
       print('❌ [LAN DATA] Send alert error: $e');
       return false;

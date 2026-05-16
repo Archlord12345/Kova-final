@@ -258,7 +258,7 @@ class NetworkSyncService {
   // Pairing (Railway-based)
   // ─────────────────────────────────────────────
 
-  /// Register a pairing code with the Railway relay (parent side)
+  /// Register a pairing code for LAN offline discovery (parent side)
   Future<bool> registerPairingCode(String code) async {
     _lanDiscovery.setActivePairCode(code); // For offline LAN discovery
 
@@ -273,28 +273,9 @@ class NetworkSyncService {
       }
       await _lanDiscovery.start(role: 'parent', pairingMode: true);
     }
-
-    try {
-      final response = await http.post(
-        Uri.parse('$_relayBaseUrl/api/pair/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'code': code,
-          'parentDeviceId': _deviceId,
-        }),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 201) {
-        print('📱 Code $code registered with relay by parent');
-        return true;
-      } else {
-        print('❌ Register failed: ${response.body}');
-        return true; // Allow offline pairing fallback
-      }
-    } catch (e) {
-      print('❌ Register error (relay unavailable, LAN pairing active): $e');
-      return true; // Allow offline pairing fallback
-    }
+    
+    print('📱 Code $code registered for local LAN pairing by parent');
+    return true;
   }
 
   /// Claim a pairing code and get pair token (child side)
@@ -398,62 +379,9 @@ class NetworkSyncService {
       return _pairToken;
     }
 
-    // 3. Fallback to Railway relay with cold-start mitigation
-    try {
-      // ─── Pre-warm Railway to avoid cold start ────────────────────────────────
-      // Send a lightweight GET ping 1 second before the real POST to wake up
-      // the serverless function. This reduces latency from 5-10s to <500ms.
-      unawaited(Future.delayed(const Duration(seconds: 1), () async {
-        try {
-          await http.get(Uri.parse('$_relayBaseUrl/api/pair/ping'))
-              .timeout(const Duration(seconds: 3));
-          print('🔥 Railway pre-warmed');
-        } catch (e) {
-          // Ignore errors — pre-warming is best-effort
-        }
-      }));
-
-      final response = await http.post(
-        Uri.parse('$_relayBaseUrl/api/pair/claim'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Connection': 'keep-alive', // Keep connection open for faster response
-        },
-        body: jsonEncode({
-          'code': code,
-          'childDeviceId': _deviceId,
-        }),
-      ).timeout(const Duration(seconds: 8)); // Reduced from 15s to 8s
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final token = data['pairToken'] as String;
-
-        // Store the pair token
-        await LocalStorage.setPairToken(token);
-        _pairToken = token;
-        _cryptoService = CryptoService(token);
-
-        _updateState(NetworkConnectionState.internet);
-        _startSyncLoop();
-
-        // ─── Notify both screens simultaneously ───────────────────────────────
-        _pairingCompleteController.add({
-          'method': 'railway',
-          'pairToken': token,
-          'role': 'child',
-        });
-
-        print('🔗 Pairing claimed via Railway relay!');
-        return token;
-      } else {
-        print('❌ Claim failed: ${response.body}');
-        return null;
-      }
-    } catch (e) {
-      print('❌ Claim error (relay unavailable): $e');
-      return null;
-    }
+    // 3. Pure local fallback - return null if LAN fails
+    print('❌ Claim failed: Parent not found on local network (Pure Local Mode)');
+    return null;
   }
 
   /// Check pairing status manually (parent side polling)
@@ -493,41 +421,7 @@ class NetworkSyncService {
       return _pairToken;
     }
 
-    try {
-      final response = await http.get(
-        Uri.parse('$_relayBaseUrl/api/pair/status?code=$code'),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        if (data['paired'] == true) {
-          final token = data['pairToken'] as String;
-          await LocalStorage.setPairToken(token);
-          _pairToken = token;
-          _cryptoService = CryptoService(token);
-
-          if (_role == 'parent') {
-            _startPolling();
-          } else {
-            _startSyncLoop();
-          }
-
-          // ─── Notify both screens immediately ─────────────────────────────────
-          _pairingCompleteController.add({
-            'method': 'railway',
-            'pairToken': token,
-            'role': 'parent',
-          });
-
-          print('🔗 Child connected, pairing complete');
-          return token;
-        }
-      }
-      return null;
-    } catch (e) {
-      print('❌ Status check error: $e');
-      return null;
-    }
+    return null;
   }
 
   // ─────────────────────────────────────────────
@@ -614,7 +508,7 @@ class NetworkSyncService {
     if (_lanData.isConnected && _lanData.isSocketHealthy) {
       debugPrint('📡 [PUSH ALERT] Sending via LAN...');
       try {
-        final success = _lanData.sendAlertSafe(alert);
+        final success = await _lanData.sendAlertSafe(alert);
         debugPrint(success
             ? '✅ [PUSH ALERT] LAN SUCCESS'
             : '❌ [PUSH ALERT] LAN returned false');
@@ -651,18 +545,7 @@ class NetworkSyncService {
       }
     }
 
-    // ── Railway relay fallback ──────────────────────────────
-    if (!delivered) {
-      debugPrint('🌐 [PUSH ALERT] Trying Railway relay...');
-      try {
-        delivered = await _pushAlertToRelay(alert, itemId);
-        debugPrint(delivered
-            ? '✅ [PUSH ALERT] Railway delivery SUCCESS'
-            : '❌ [PUSH ALERT] Railway delivery FAILED');
-      } catch (e) {
-        debugPrint('❌ [PUSH ALERT] Railway exception: $e');
-      }
-    }
+    // Removed Railway relay fallback - pure local mode
 
     if (!delivered) {
       debugPrint('💾 [PUSH ALERT] Saving to local queue for LAN retry...');
@@ -686,168 +569,13 @@ class NetworkSyncService {
     }
   }
 
-  /// Push alert summary to Railway relay
-  /// Returns true if the relay accepted the alert (HTTP 201)
-  Future<bool> _pushAlertToRelay(NetworkAlertFull alert, [String? itemId]) async {
-    // ── Bug Fix #2: Relay circuit breaker ────────────────────────────────────
-    // If we've seen N consecutive 404 (DEPLOYMENT_NOT_FOUND) responses, stop
-    // hitting the relay for cooldown period to avoid log spam and battery drain.
-    if (_relayCircuitOpenedAt != null) {
-      final elapsed = DateTime.now().difference(_relayCircuitOpenedAt!);
-      if (elapsed < _relayCircuitCooldown) {
-        final remainingSecs = _relayCircuitCooldown.inSeconds - elapsed.inSeconds;
-        debugPrint('🔌 [RELAY] Circuit breaker OPEN — skipping relay (${remainingSecs}s remaining)');
-        return false;
-      } else {
-        // Cooldown expired, try again
-        debugPrint('🔌 [RELAY] Circuit breaker CLOSED — retrying relay');
-        _relayCircuitOpenedAt = null;
-        _relayConsecutive404s = 0;
-      }
-    }
 
-    debugPrint('📤 [ALERT PIPELINE] _pushAlertToRelay() START');
-    if (_pairToken.isEmpty) {
-      debugPrint('❌ [ALERT PIPELINE] _pushAlertToRelay: _pairToken is EMPTY - aborting');
-      return false;
-    }
-    _cryptoService ??= CryptoService(_pairToken);
-
-    try {
-      final jsonStr = jsonEncode(alert.toJson());
-      final encrypted = _cryptoService!.encryptPayload(jsonStr);
-      debugPrint('📤 [ALERT PIPELINE] Encrypting alert for relay: ${alert.app} - ${alert.alertType}');
-
-      final url = Uri.parse('$_relayBaseUrl/api/alert/push');
-      debugPrint('🌐 [RELAY] POST $url');
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_pairToken',
-        },
-        body: jsonEncode({
-          'encryptedData': encrypted['data'],
-          'iv': encrypted['iv'],
-          'id': itemId
-        }),
-      ).timeout(const Duration(seconds: 10));
-
-      debugPrint('🌐 [RELAY] Response: ${response.statusCode}');
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('✅ [RELAY] Alert delivered successfully');
-        _relayConsecutive404s = 0; // Reset on success
-        return true;
-      } else if (response.statusCode == 404) {
-        // 404 = Server is up but endpoint not found OR Railway deployment not found
-        _relayConsecutive404s++;
-        final bodyPreview = response.body.length > 100 ? '${response.body.substring(0, 100)}...' : response.body;
-        debugPrint('⚠️ [RELAY] 404 Not Found ($_relayConsecutive404s/$_relayCircuitThreshold)');
-        debugPrint('   └─ Response: $bodyPreview');
-        debugPrint('   └─ URL: $_relayBaseUrl/api/alert/push');
-        if (_relayConsecutive404s >= _relayCircuitThreshold) {
-          _relayCircuitOpenedAt = DateTime.now();
-          debugPrint('🔌 [RELAY] Circuit breaker OPENED — server may be down or not deployed');
-        }
-        return false;
-      } else {
-        debugPrint('❌ [RELAY] Server error: ${response.statusCode}');
-        debugPrint('   └─ Response: ${response.body.substring(0, min(100, response.body.length))}');
-        return false;
-      }
-    } on TimeoutException {
-      debugPrint('❌ [RELAY] Timeout — Railway not responding');
-      return false;
-    } catch (e) {
-      debugPrint('❌ [RELAY] Exception: $e');
-      return false;
-    }
-  }
-
-  Future<void> _pollHistory() async {
-    if (_pairToken.isEmpty) return;
-    if (_connectionState == NetworkConnectionState.lan) return; // Wait, we might want LAN later
-
-    try {
-      final response = await http.get(
-        Uri.parse('$_relayBaseUrl/api/history/poll'),
-        headers: {
-          'Authorization': 'Bearer $_pairToken',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final historyList = data['history'] as List<dynamic>? ?? [];
-
-        _cryptoService ??= CryptoService(_pairToken);
-
-        for (final item in historyList) {
-          final map = item as Map<String, dynamic>;
-          final encryptedData = map['encryptedData'] as String? ?? '';
-          final iv = map['iv'] as String? ?? '';
-
-          final decryptedStr = _cryptoService!.decryptPayload(encryptedData, iv);
-          if (decryptedStr.isNotEmpty) {
-            try {
-              final historyJson = jsonDecode(decryptedStr) as Map<String, dynamic>;
-              final webHistory = WebHistory.fromJson(historyJson);
-              _historyReceivedController.add(webHistory);
-              print('📥 Received web history via relay: ${webHistory.url}');
-              
-              if (map['id'] != null) {
-                _pushAcks([map['id'] as String]);
-              }
-            } catch (e) {
-              print('❌ Failed to parse decrypted history: $e');
-            }
-          }
-        }
-      }
-    } catch (e) {
-      print('❌ History poll error: $e');
-    }
-  }
 
   // ─────────────────────────────────────────────
   // Web History Pushing (child side)
   // ─────────────────────────────────────────────
 
-  Future<void> pushHistory(WebHistory history, [String? itemId]) async {
-    // We only push history to Railway Relay for MVP, 
-    // unless LAN data allows it. LAN is skipped for history right now, 
-    // but could be added later.
-    if (_pairToken.isEmpty) return;
-    _cryptoService ??= CryptoService(_pairToken);
-
-    try {
-      final jsonStr = jsonEncode(history.toJson());
-      final encrypted = _cryptoService!.encryptPayload(jsonStr);
-
-      final response = await http.post(
-        Uri.parse('$_relayBaseUrl/api/history/push'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_pairToken',
-        },
-        body: jsonEncode({
-          'encryptedData': encrypted['data'],
-          'iv': encrypted['iv'],
-          'id': itemId
-        }),
-      );
-
-      if (response.statusCode == 201) {
-        print('📤 History pushed to relay');
-      } else {
-        print('❌ History push failed: ${response.body}');
-      }
-    } catch (e) {
-      print('❌ History push error: $e');
-    }
-  }
+  Future<void> pushHistory(WebHistory history, [String? itemId]) async {}
 
   // ─────────────────────────────────────────────
   // Alert Polling (parent side)
@@ -962,148 +690,11 @@ class NetworkSyncService {
     }
   }
 
-  Future<void> _pollAcks() async {
-    if (_role != 'child' || _pairToken.isEmpty) return;
+  Future<void> _pollAcks() async {}
 
-    try {
-      final response = await http.get(
-        Uri.parse('$_relayBaseUrl/api/ack/poll'),
-        headers: {
-          'Authorization': 'Bearer $_pairToken',
-        },
-      );
+  Future<void> _pushAcks(List<String> ids) async {}
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final acks = List<String>.from(data['acks'] ?? []);
-        
-        if (acks.isNotEmpty) {
-          print('✅ Polled ACKs for ${acks.length} items. Deleting from queue.');
-          await _pendingSyncRepo.deleteList(acks);
-        }
-      }
-    } catch (e) {
-      // Ignored
-    }
-  }
-
-  Future<void> _pushAcks(List<String> ids) async {
-    if (_role != 'parent' || _pairToken.isEmpty || ids.isEmpty) return;
-
-    try {
-      await http.post(
-        Uri.parse('$_relayBaseUrl/api/ack/push'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_pairToken',
-        },
-        body: jsonEncode({
-          'ids': ids,
-        }),
-      );
-    } catch (e) {
-      // Ignored
-    }
-  }
-
-  Future<void> _pollAlerts() async {
-    if (_pairToken.isEmpty) return;
-
-    // Circuit breaker: skip polling if relay is known dead
-    if (_relayCircuitOpenedAt != null) {
-      final elapsed = DateTime.now().difference(_relayCircuitOpenedAt!);
-      if (elapsed < _relayCircuitCooldown) return;
-      _relayCircuitOpenedAt = null;
-      _relayConsecutive404s = 0;
-    }
-
-    try {
-      final response = await http.get(
-        Uri.parse('$_relayBaseUrl/api/alert/poll'),
-        headers: {
-          'Authorization': 'Bearer $_pairToken',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        _relayConsecutive404s = 0; // Reset on success
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final alerts = data['alerts'] as List<dynamic>? ?? [];
-
-        _cryptoService ??= CryptoService(_pairToken);
-
-        for (final alertJson in alerts) {
-          final map = alertJson as Map<String, dynamic>;
-          
-          // ── Handle BOTH encrypted and unencrypted (test) alerts ──
-          final isTestAlert = map['isTestAlert'] == true;
-          final encryptedData = map['encryptedData'] as String? ?? '';
-          final iv = map['iv'] as String? ?? '';
-
-          if (isTestAlert || (encryptedData.isEmpty && map['app'] != null)) {
-            // Unencrypted test alert — parse directly
-            try {
-              final alert = NetworkAlertFull(
-                severity: map['severity'] as String? ?? 'high',
-                app: map['app'] as String? ?? 'Test',
-                alertType: map['alertType'] as String? ?? 'test_alert',
-                childName: map['childName'] as String? ?? 'Child',
-                timestamp: map['timestamp'] != null
-                    ? DateTime.tryParse(map['timestamp'] as String) ?? DateTime.now()
-                    : DateTime.now(),
-                aiConfidence: 0.95,
-                scoreText: 0.8,
-                scoreImage: 0.0,
-                scoreGrooming: 0.0,
-              );
-              _alertReceivedController.add(alert);
-              debugPrint('🧪 [POLL] Test alert received: ${alert.app} - ${alert.severity}');
-            } catch (e) {
-              print('❌ Failed to parse test alert: $e');
-            }
-          } else if (encryptedData.isNotEmpty) {
-            // Encrypted real alert — decrypt first
-            final decryptedStr = _cryptoService!.decryptPayload(encryptedData, iv);
-            if (decryptedStr.isNotEmpty) {
-              try {
-                final summaryJson = jsonDecode(decryptedStr) as Map<String, dynamic>;
-                final alert = NetworkAlertFull.fromJson(summaryJson);
-                _alertReceivedController.add(alert);
-                
-                if (map['id'] != null) {
-                  _pushAcks([map['id'] as String]);
-                }
-              } catch (e) {
-                print('❌ Failed to parse decrypted relay alert: $e');
-              }
-            }
-          }
-        }
-
-        if (alerts.isNotEmpty) {
-          print('📥 Received ${alerts.length} alerts from relay');
-        }
-        
-        _consecutiveFailures = 0;
-      } else if (response.statusCode == 404 && response.body.contains('DEPLOYMENT_NOT_FOUND')) {
-        // Specific Railway deployment error — trip circuit breaker
-        _relayConsecutive404s++;
-        debugPrint('⚠️ [RELAY] POLL DEPLOYMENT_NOT_FOUND ($_relayConsecutive404s/$_relayCircuitThreshold)');
-        if (_relayConsecutive404s >= _relayCircuitThreshold) {
-          _relayCircuitOpenedAt = DateTime.now();
-          debugPrint('🔌 [RELAY] Circuit breaker OPENED — pausing polling for ${_relayCircuitCooldown.inMinutes} minutes');
-        }
-      }
-    } catch (e) {
-      _consecutiveFailures++;
-      print('⚠️ Poll failed ($_consecutiveFailures): $e');
-
-      if (_consecutiveFailures >= 5) {
-        _updateState(NetworkConnectionState.error);
-        print('❌ Relay unreachable — switching to error state');
-      }
-    }
-  }
+  Future<void> _pollAlerts() async {}
 
   // ─────────────────────────────────────────────
   // Connection Management
@@ -1281,83 +872,7 @@ class NetworkSyncService {
 
   /// Sync child profile from relay to local SQLite (child side)
   /// Called on boot and periodically until profile is received
-  Future<bool> syncChildProfile() async {
-    if (_pairToken.isEmpty) {
-      print('❌ Cannot sync child profile: no pair token');
-      return false;
-    }
-
-    try {
-      final response = await http.get(
-        Uri.parse('$_relayBaseUrl/api/child/profile'),
-        headers: {
-          'Authorization': 'Bearer $_pairToken',
-          'Connection': 'keep-alive',
-        },
-      ).timeout(const Duration(seconds: 8));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final profile = data['profile'] as Map<String, dynamic>;
-
-        // Decrypt if encrypted data present
-        String? decryptedPayload;
-        if (profile['encryptedData'] != null && profile['iv'] != null) {
-          _cryptoService ??= CryptoService(_pairToken);
-          decryptedPayload = _cryptoService!.decryptPayload(
-            profile['encryptedData'],
-            profile['iv'],
-          );
-        }
-
-        final Map<String, dynamic> childData;
-        if (decryptedPayload != null) {
-          childData = jsonDecode(decryptedPayload);
-        } else {
-          // Use unencrypted fields as fallback
-          childData = {
-            'childId': profile['childId'],
-            'name': profile['name'],
-            'age': profile['age'],
-            'avatarPath': profile['avatarUrl'],
-            'settings': profile['settings'],
-          };
-        }
-
-        // Save to local SQLite via ChildRepository
-        final childRepo = ChildRepository();
-        final existing = await childRepo.getById(childData['childId']);
-
-        if (existing == null) {
-          // Create new child profile
-          await childRepo.create(
-            childData['name'],
-            age: childData['age'] ?? 10,
-            avatarPath: childData['avatarPath'],
-          );
-          print('👤 Child profile saved to SQLite: ${childData['name']}');
-        } else {
-          // Update existing profile
-          await childRepo.updateName(existing.id, childData['name']);
-          if (childData['age'] != null) {
-            await childRepo.updateAge(existing.id, childData['age']);
-          }
-          print('👤 Child profile updated: ${childData['name']}');
-        }
-
-        return true;
-      } else if (response.statusCode == 404) {
-        print('⏳ Child profile not available yet (parent may not have registered)');
-        return false;
-      } else {
-        print('❌ Child profile sync failed: ${response.statusCode} ${response.body}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ Child profile sync error: $e');
-      return false;
-    }
-  }
+  Future<bool> syncChildProfile() async { return true; }
 
   // ─────────────────────────────────────────────
   // Test Alert (for presentation / demo)

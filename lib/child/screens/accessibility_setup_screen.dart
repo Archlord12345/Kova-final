@@ -178,10 +178,16 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
         'Press ← Back to return here',
       ],
       onRequest: () async {
-        await AccessibilityService.requestKeyboardPermission();
-        // After a short delay, show the picker to select it
-        await Future.delayed(const Duration(seconds: 2));
-        await AccessibilityService.showKeyboardPicker();
+        // First check if it is already enabled in Android Settings
+        final isEnabledInSettings = await AccessibilityService.isKeyboardEnabledInSettings();
+        
+        if (!isEnabledInSettings) {
+          // If not enabled, open settings and let user enable it
+          await AccessibilityService.requestKeyboardPermission();
+        } else {
+          // If already enabled but not selected, just show the picker
+          await AccessibilityService.showKeyboardPicker();
+        }
       },
     ),
     _ServiceInfo(

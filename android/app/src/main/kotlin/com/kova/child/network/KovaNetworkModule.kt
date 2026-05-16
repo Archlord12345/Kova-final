@@ -2,6 +2,12 @@ package com.kova.child.network
 
 import android.content.Context
 import android.util.Log
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -153,10 +159,68 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
 
     private fun sendEvent(type: String, payload: String) {
         val eventData = mapOf("type" to type, "payload" to payload)
+
+        // Intercept alert messages to show a native notification
+        if (type == "message_received") {
+            try {
+                val json = JSONObject(payload)
+                if (json.optString("type") == "alert") {
+                    val alertData = json.optJSONObject("alert")
+                    if (alertData != null) {
+                        val appName = alertData.optString("app", "Application")
+                        val alertType = alertData.optString("alertType", "Alerte de sécurité")
+                        val reason = alertData.optString("reason", "Activité suspecte détectée")
+                        showNativeNotification(appName, reason)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse message for notification: ${e.message}")
+            }
+        }
+
         // Run on UI thread since MethodChannel requires it
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             eventSink?.success(eventData)
         }
+    }
+
+    private fun showNativeNotification(title: String, message: String) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "kova_alerts_channel"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Kova Security Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Critical alerts from child device"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        // Create an Intent to open the app when the notification is clicked
+        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Need an icon, using a generic android icon as fallback
+        val iconResId = context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+        val finalIcon = if (iconResId != 0) iconResId else android.R.drawable.ic_dialog_alert
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(finalIcon)
+            .setContentTitle("Kova Alert: $title")
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        notificationManager.notify(System.currentTimeMillis().toInt(), builder.build())
     }
 
     fun dispose() {

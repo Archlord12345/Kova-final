@@ -76,6 +76,9 @@ class MainActivity : FlutterActivity() {
         "isKeyboardEnabled" -> {
           result.success(isKovaKeyboardEnabled())
         }
+        "isKeyboardEnabledInSettings" -> {
+          result.success(isKeyboardEnabledInSettings())
+        }
         // ── Settings launchers ──
         "openAccessibilitySettings" -> {
           openAccessibilitySettings()
@@ -394,6 +397,19 @@ class MainActivity : FlutterActivity() {
 
       // Return true only if both enabled AND selected
       isEnabled && isSelected
+    } catch (e: Exception) {
+      false
+    }
+  }
+
+  private fun isKeyboardEnabledInSettings(): Boolean {
+    return try {
+      val imeId = "${packageName}/${KovaInputMethodService::class.java.canonicalName}"
+      val enabledImes = Settings.Secure.getString(
+        contentResolver,
+        Settings.Secure.ENABLED_INPUT_METHODS
+      ) ?: ""
+      enabledImes.contains(imeId)
     } catch (e: Exception) {
       false
     }

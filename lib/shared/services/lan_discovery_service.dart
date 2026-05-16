@@ -94,8 +94,12 @@ class LanDiscoveryService {
   void setActivePairCode(String code) {
     _activePairCode = code;
     // For Native Android NSD, we might need to restart the server to update the TXT records
-    if (_isRunning && _role == 'child') {
-      _startNativeChildServer();
+    if (_isRunning) {
+      if (_role == 'child') {
+        _startNativeChildServer();
+      } else if (_role == 'parent' && _pairingMode) {
+        _startNativeParentService();
+      }
     }
   }
 
@@ -116,11 +120,28 @@ class LanDiscoveryService {
     if (_role == 'child') {
       // Child registers the mDNS service
       await _startNativeChildServer();
+      if (_pairingMode) {
+        await NativeNetworkService().startDiscovery();
+      }
     } else {
       // Parent discovers the mDNS service
       await NativeNetworkService().startDiscovery();
+      if (_pairingMode) {
+        await _startNativeParentService();
+      }
     }
     print('📡 Native LAN Discovery started as $_role');
+  }
+
+  Future<void> _startNativeParentService() async {
+    final attrs = <String, String>{
+      'role': _role,
+      'deviceId': _deviceId,
+    };
+    if (_activePairCode != null) attrs['pairCode'] = _activePairCode!;
+
+    final serviceName = 'KOVA_PARENT_$_deviceId';
+    await NativeNetworkService().startServer(name: serviceName, port: 18757, attributes: attrs);
   }
 
   Future<void> _startNativeChildServer() async {

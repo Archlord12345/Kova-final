@@ -63,6 +63,17 @@ class AccessibilityService {
     }
   }
 
+  /// Check if KOVA keyboard is enabled in settings (but maybe not selected yet)
+  static Future<bool> isKeyboardEnabledInSettings() async {
+    try {
+      final isEnabled = await _setup.invokeMethod<bool>('isKeyboardEnabledInSettings');
+      return isEnabled ?? false;
+    } catch (e) {
+      debugPrint('Error checking keyboard settings: $e');
+      return false;
+    }
+  }
+
   /// Open input method settings to enable KOVA keyboard
   static Future<void> requestKeyboardPermission() async {
     try {
