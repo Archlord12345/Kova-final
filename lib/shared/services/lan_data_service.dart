@@ -33,7 +33,7 @@ class LanDataService {
 
   bool get isConnected => _isConnected;
   bool get isSocketHealthy => _isConnected; // Native WebSockets handle internal ping/pong health
-  bool get isServerHealthy => _isConnected;
+  Future<bool> isServerHealthy() async => _isConnected;
 
   StreamSubscription? _messageSub;
   StreamSubscription? _connectionSub;
