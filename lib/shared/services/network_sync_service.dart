@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -30,8 +29,9 @@ class NetworkSyncService {
   // ── Configurable relay URL ─────────────────────────────────────────────────
   // Default: Railway deployment. Can be overridden to local server for demo.
   // Set via: LocalStorage.setString('relay_url', 'http://192.168.x.x:3000')
-  static const String _defaultRelayUrl = 'https://kova-production-3f1f.up.railway.app';
-  
+  static const String _defaultRelayUrl =
+      'https://kova-production-3f1f.up.railway.app';
+
   /// Get the current relay base URL (configurable via settings)
   String get _relayBaseUrl {
     final custom = LocalStorage.getString('relay_url');
@@ -49,7 +49,7 @@ class NetworkSyncService {
     final custom = LocalStorage.getString('relay_url');
     return custom.isNotEmpty ? custom : _defaultRelayUrl;
   }
-  
+
   /// Reset relay URL to default
   static Future<void> resetRelayUrl() async {
     await LocalStorage.remove('relay_url');
@@ -70,8 +70,13 @@ class NetworkSyncService {
   String _pairToken = '';
   String _deviceId = '';
   CryptoService? _cryptoService;
-  bool _isSyncing = false;
 
+  // ── Relay circuit breaker ─────────────────────────────────────────
+  int _relayConsecutive404s = 0;
+  DateTime? _relayCircuitOpenedAt;
+  static const _relayCircuitThreshold = 3;
+  static const _relayCircuitCooldown = Duration(seconds: 30);
+  bool _isSyncing = false;
 
   // Reconnect cooldown: prevents stampede when multiple alerts fire while LAN is down
   DateTime? _lastReconnectAttempt;
@@ -84,26 +89,24 @@ class NetworkSyncService {
   final Map<String, DateTime> _alertDedupCache = {};
   static const _alertDedupWindow = Duration(seconds: 10);
 
-
   // Streams for UI
   final _connectionStateController =
       StreamController<NetworkConnectionState>.broadcast();
   final _alertReceivedController =
       StreamController<NetworkAlertSummary>.broadcast();
-  final _historyReceivedController =
-      StreamController<WebHistory>.broadcast();
+  final _historyReceivedController = StreamController<WebHistory>.broadcast();
 
   // ─── Pairing Complete Stream ──────────────────────────────────────────────
   // Fires immediately when pairing succeeds (LAN or Railway). Both parent and
   // child subscribe to this to navigate simultaneously instead of polling.
-  final _pairingCompleteController = StreamController<Map<String, dynamic>>.broadcast();
+  final _pairingCompleteController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<NetworkConnectionState> get onConnectionStateChanged =>
       _connectionStateController.stream;
   Stream<NetworkAlertSummary> get onAlertReceived =>
       _alertReceivedController.stream;
-  Stream<WebHistory> get onHistoryReceived =>
-      _historyReceivedController.stream;
+  Stream<WebHistory> get onHistoryReceived => _historyReceivedController.stream;
   Stream<Map<String, dynamic>> get onPairingComplete =>
       _pairingCompleteController.stream;
 
@@ -138,7 +141,8 @@ class NetworkSyncService {
         final alertData = udpAlert['alert'] as Map<String, dynamic>?;
         if (alertData == null) return;
 
-        debugPrint('📨 [NETWORK SYNC] UDP alert received from ${udpAlert['deviceId']}');
+        debugPrint(
+            '📨 [NETWORK SYNC] UDP alert received from ${udpAlert['deviceId']}');
 
         // Convert to NetworkAlertFull and broadcast to UI
         final alert = NetworkAlertFull.fromJson(alertData);
@@ -151,16 +155,16 @@ class NetworkSyncService {
     // Allow starting without a pair token during initial pairing.
     // LAN discovery will run in pairingMode, and relay calls are skipped.
     if (_pairToken.isEmpty) {
-      print('⚠️ No pair token — running in pairing-only mode (LAN discovery active)');
+      print(
+          '⚠️ No pair token — running in pairing-only mode (LAN discovery active)');
       // Start LAN discovery in pairing mode so devices can find each other
       await _lanDiscovery.start(role: role, pairingMode: true);
       return;
     }
 
     // Listen for connectivity changes
-    _connectivitySub = Connectivity()
-        .onConnectivityChanged
-        .listen(_handleConnectivityChange);
+    _connectivitySub =
+        Connectivity().onConnectivityChanged.listen(_handleConnectivityChange);
 
     // Start LAN discovery if not already running
     if (!_lanDiscovery.isRunning) {
@@ -174,9 +178,11 @@ class NetworkSyncService {
     if (role == 'child') {
       final serverStarted = await _lanData.startServer(_pairToken);
       if (serverStarted) {
-        debugPrint('✅ [NETWORK SYNC] Child LAN server started successfully on port 18757');
+        debugPrint(
+            '✅ [NETWORK SYNC] Child LAN server started successfully on port 18757');
       } else {
-        debugPrint('❌ [NETWORK SYNC] Child LAN server failed to start - alerts will use Railway only');
+        debugPrint(
+            '❌ [NETWORK SYNC] Child LAN server failed to start - alerts will use Railway only');
       }
       _startSyncLoop();
     } else {
@@ -261,7 +267,7 @@ class NetworkSyncService {
       }
       await _lanDiscovery.start(role: 'parent', pairingMode: true);
     }
-    
+
     print('📱 Code $code registered for local LAN pairing by parent');
     return true;
   }
@@ -293,7 +299,8 @@ class NetworkSyncService {
       try {
         // Wait before each attempt: 500ms first try, 800ms subsequent
         final delayMs = attempt == 1 ? 500 : 800;
-        print('📡 LAN discovery attempt $attempt/$maxAttempts (delay: ${delayMs}ms)...');
+        print(
+            '📡 LAN discovery attempt $attempt/$maxAttempts (delay: ${delayMs}ms)...');
         await Future.delayed(Duration(milliseconds: delayMs));
 
         // Broadcast our presence immediately before listening
@@ -320,12 +327,13 @@ class NetworkSyncService {
       _pairToken = const Uuid().v4();
       await LocalStorage.setPairToken(_pairToken);
       _cryptoService = CryptoService(_pairToken);
-      
+
       // Save parent peer info so we can reconnect on restart!
       await LocalStorage.setLastChildPeer(localPeer.toJson());
-      
+
       // After pairing via UDP discovery, establish TCP data channel IMMEDIATELY
-      final connected = await _lanData.connectToParent(localPeer.ipAddress, 18757, _pairToken);
+      final connected = await _lanData.connectToParent(
+          localPeer.ipAddress, 18757, _pairToken);
       if (connected) {
         debugPrint('✅ [LAN] TCP data channel established');
         _updateState(NetworkConnectionState.lan);
@@ -337,10 +345,10 @@ class NetworkSyncService {
       // Re-init discovery with the new pairToken (no longer in pairing mode)
       _lanDiscovery.stop();
       _lanData.stopServer();
-      
+
       _lanDiscovery.setActivePairCode(code);
       _lanDiscovery.start(role: 'child'); // run without await
-      
+
       _startSyncLoop();
 
       // ─── Send child profile over LAN so parent gets the name immediately ─
@@ -368,24 +376,27 @@ class NetworkSyncService {
     }
 
     // 3. Pure local fallback - return null if LAN fails
-    print('❌ Claim failed: Parent not found on local network (Pure Local Mode)');
+    print(
+        '❌ Claim failed: Parent not found on local network (Pure Local Mode)');
     return null;
   }
 
   /// Check pairing status manually (parent side polling)
   Future<String?> checkPairingStatus(String code) async {
     // Check if child has claimed the code via LAN!
-    if (_connectionState == NetworkConnectionState.lan || _lanDiscovery.pairedPeer != null) {
+    if (_connectionState == NetworkConnectionState.lan ||
+        _lanDiscovery.pairedPeer != null) {
       return _pairToken;
     }
 
     final childPeer = _lanDiscovery.findChildByCode(code);
     if (childPeer != null && childPeer.encryptedPairToken.isNotEmpty) {
       // The child generated a pairToken for us!
-      _pairToken = CryptoService(code).decryptPayload(childPeer.encryptedPairToken, childPeer.encryptedTokenIv);
+      _pairToken = CryptoService(code).decryptPayload(
+          childPeer.encryptedPairToken, childPeer.encryptedTokenIv);
       await LocalStorage.setPairToken(_pairToken);
       _cryptoService = CryptoService(_pairToken);
-      
+
       await LocalStorage.setLastChildPeer(childPeer.toJson());
 
       // Parent is already running the TCP server, child will connect to us
@@ -425,12 +436,14 @@ class NetworkSyncService {
       final now = DateTime.now();
       final lastPush = _alertDedupCache[dedupKey];
       if (lastPush != null && now.difference(lastPush) < _alertDedupWindow) {
-        debugPrint('🔇 [PUSH ALERT] Dedup: skipping duplicate $dedupKey (${now.difference(lastPush).inMilliseconds}ms ago)');
+        debugPrint(
+            '🔇 [PUSH ALERT] Dedup: skipping duplicate $dedupKey (${now.difference(lastPush).inMilliseconds}ms ago)');
         return;
       }
       _alertDedupCache[dedupKey] = now;
       // Prune old entries to prevent memory leak
-      _alertDedupCache.removeWhere((_, ts) => now.difference(ts) > const Duration(minutes: 2));
+      _alertDedupCache.removeWhere(
+          (_, ts) => now.difference(ts) > const Duration(minutes: 2));
     }
 
     debugPrint('📤 [PUSH ALERT] severity=${alert.severity}');
@@ -438,16 +451,19 @@ class NetworkSyncService {
     bool delivered = false;
 
     // ── Child: ensure server is running, wait for parent to connect ──
-    if (_role == 'child' && (!_lanData.isConnected || !_lanData.isSocketHealthy)) {
+    if (_role == 'child' &&
+        (!_lanData.isConnected || !_lanData.isSocketHealthy)) {
       // Child runs server - ensure it's running and wait for parent connection
       await _ensureChildServerRunning();
       if (!_lanData.isConnected) {
-        debugPrint('⏳ [PUSH ALERT] Child server running, waiting for parent to connect...');
+        debugPrint(
+            '⏳ [PUSH ALERT] Child server running, waiting for parent to connect...');
       }
     }
 
     // ── Parent: debounced reconnect to child's server ──
-    if (_role == 'parent' && (!_lanData.isConnected || !_lanData.isSocketHealthy)) {
+    if (_role == 'parent' &&
+        (!_lanData.isConnected || !_lanData.isSocketHealthy)) {
       final now = DateTime.now();
       final cooldownExpired = _lastReconnectAttempt == null ||
           now.difference(_lastReconnectAttempt!) > _reconnectCooldown;
@@ -461,12 +477,10 @@ class NetworkSyncService {
             // Parent: connect to discovered child
             final discoveredChild = _lanDiscovery.pairedPeer;
             if (discoveredChild != null) {
-              debugPrint('🔍 [PUSH ALERT] Found child via discovery: ${discoveredChild.ipAddress}:${discoveredChild.port}');
+              debugPrint(
+                  '🔍 [PUSH ALERT] Found child via discovery: ${discoveredChild.ipAddress}:${discoveredChild.port}');
               final connected = await _lanData.connectToParent(
-                discoveredChild.ipAddress,
-                discoveredChild.port,
-                _pairToken
-              );
+                  discoveredChild.ipAddress, discoveredChild.port, _pairToken);
               if (connected) {
                 debugPrint('✅ [PUSH ALERT] Connected to child server');
                 _activeReconnect!.complete(true);
@@ -518,7 +532,8 @@ class NetworkSyncService {
       if (peer != null) {
         debugPrint('📡 [PUSH ALERT] TCP LAN failed, trying UDP fallback...');
         try {
-          final udpSuccess = await _lanDiscovery.sendAlertViaUdp(peer, alert.toJson());
+          final udpSuccess =
+              await _lanDiscovery.sendAlertViaUdp(peer, alert.toJson());
           if (udpSuccess) {
             // UDP is best-effort, consider it "delivered" for queuing purposes
             // but we won't delete from queue since UDP has no ACK
@@ -531,7 +546,13 @@ class NetworkSyncService {
       }
     }
 
-    // Removed Railway relay fallback - pure local mode
+    // Fallback to Railway relay (summary only)
+    if (!delivered) {
+      await _pushAlertToRelay(alert);
+      // We consider it 'delivered' to the relay queue, but we might still want to retry LAN later
+      // The old behavior queued it anyway if LAN failed. Let's keep the queue logic below
+      // but mark it delivered if relay success so it doesn't queue indefinitely.
+    }
 
     if (!delivered) {
       debugPrint('💾 [PUSH ALERT] Saving to local queue for LAN retry...');
@@ -555,13 +576,77 @@ class NetworkSyncService {
     }
   }
 
-
-
   // ─────────────────────────────────────────────
   // Web History Pushing (child side)
   // ─────────────────────────────────────────────
 
-  Future<void> pushHistory(WebHistory history, [String? itemId]) async {}
+  /// Push alert summary to Railway relay
+  Future<void> _pushAlertToRelay(NetworkAlertFull alert) async {
+    if (_pairToken.isEmpty) return;
+    _cryptoService ??= CryptoService(_pairToken);
+
+    try {
+      final summary = NetworkAlertSummary(
+        severity: alert.severity,
+        app: alert.app,
+        alertType: alert.alertType,
+        childName: alert.childName,
+        timestamp: alert.timestamp,
+      );
+
+      final jsonStr = jsonEncode(summary.toJson());
+      final encrypted = _cryptoService!.encryptPayload(jsonStr);
+
+      final response = await http.post(
+        Uri.parse('$_relayBaseUrl/api/alert/push'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_pairToken',
+        },
+        body: jsonEncode(
+            {'encryptedData': encrypted['data'], 'iv': encrypted['iv']}),
+      );
+
+      if (response.statusCode == 201) {
+        debugPrint('📤 Alert pushed to relay (summary)');
+      } else {
+        debugPrint('❌ Alert push failed: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ Alert push error: $e');
+    }
+  }
+
+  Future<void> pushHistory(WebHistory history, [String? itemId]) async {
+    if (_pairToken.isEmpty) return;
+    _cryptoService ??= CryptoService(_pairToken);
+
+    try {
+      final jsonStr = jsonEncode(history.toJson());
+      final encrypted = _cryptoService!.encryptPayload(jsonStr);
+
+      final response = await http.post(
+        Uri.parse('$_relayBaseUrl/api/history/push'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_pairToken',
+        },
+        body: jsonEncode(
+            {'encryptedData': encrypted['data'], 'iv': encrypted['iv']}),
+      );
+
+      if (response.statusCode == 201) {
+        debugPrint('📤 History pushed to relay');
+        if (itemId != null) {
+          await _pendingSyncRepo.deleteList([itemId]);
+        }
+      } else {
+        debugPrint('❌ History push failed: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ History push error: $e');
+    }
+  }
 
   // ─────────────────────────────────────────────
   // Alert Polling (parent side)
@@ -569,14 +654,14 @@ class NetworkSyncService {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    // Pure local mode: no relay polling.
-    // Instead, periodically ensure the parent stays connected to the child
-    // via WebSocket over LAN (reconnect if connection dropped).
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _ensureParentConnected();
+      _pollAlerts();
+      _pollHistory();
     });
-    // Immediate first check
     _ensureParentConnected();
+    _pollAlerts();
+    _pollHistory();
   }
 
   /// Parent-side: ensure WebSocket connection to child's server is alive.
@@ -589,12 +674,14 @@ class NetworkSyncService {
       return;
     }
 
-    debugPrint('🔁 [PARENT POLL] Not connected to child — attempting reconnect...');
+    debugPrint(
+        '🔁 [PARENT POLL] Not connected to child — attempting reconnect...');
 
     // Try to find child via discovery
     final peer = _lanDiscovery.pairedPeer;
     if (peer != null) {
-      debugPrint('🔍 [PARENT POLL] Found child at ${peer.ipAddress}:${peer.port}');
+      debugPrint(
+          '🔍 [PARENT POLL] Found child at ${peer.ipAddress}:${peer.port}');
       try {
         final connected = await _lanData.connectToParent(
           peer.ipAddress,
@@ -617,6 +704,101 @@ class NetworkSyncService {
         await _lanDiscovery.start(role: 'parent');
         debugPrint('📡 [PARENT POLL] Restarted mDNS discovery');
       }
+    }
+  }
+
+  Future<void> _pollAlerts() async {
+    if (_pairToken.isEmpty) return;
+
+    if (_relayCircuitOpenedAt != null) {
+      final elapsed = DateTime.now().difference(_relayCircuitOpenedAt!);
+      if (elapsed < _relayCircuitCooldown) return;
+      _relayCircuitOpenedAt = null;
+      _relayConsecutive404s = 0;
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_relayBaseUrl/api/alert/poll'),
+        headers: {
+          'Authorization': 'Bearer $_pairToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        _relayConsecutive404s = 0;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final alerts = data['alerts'] as List<dynamic>? ?? [];
+
+        _cryptoService ??= CryptoService(_pairToken);
+
+        for (final alertJson in alerts) {
+          final map = alertJson as Map<String, dynamic>;
+          final encryptedData = map['encryptedData'] as String? ?? '';
+          final iv = map['iv'] as String? ?? '';
+
+          final decryptedStr =
+              _cryptoService!.decryptPayload(encryptedData, iv);
+          if (decryptedStr.isNotEmpty) {
+            try {
+              final summaryJson =
+                  jsonDecode(decryptedStr) as Map<String, dynamic>;
+              final alert = NetworkAlertSummary.fromJson(summaryJson);
+              _alertReceivedController.add(alert);
+            } catch (e) {
+              debugPrint('❌ Failed to parse decrypted alert: $e');
+            }
+          }
+        }
+      } else if (response.statusCode == 404 &&
+          response.body.contains('DEPLOYMENT_NOT_FOUND')) {
+        _relayConsecutive404s++;
+        if (_relayConsecutive404s >= _relayCircuitThreshold) {
+          _relayCircuitOpenedAt = DateTime.now();
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  Future<void> _pollHistory() async {
+    if (_pairToken.isEmpty) return;
+    try {
+      final response = await http.get(
+        Uri.parse('$_relayBaseUrl/api/history/poll'),
+        headers: {
+          'Authorization': 'Bearer $_pairToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final historyList = data['history'] as List<dynamic>? ?? [];
+
+        _cryptoService ??= CryptoService(_pairToken);
+
+        for (final item in historyList) {
+          final map = item as Map<String, dynamic>;
+          final encryptedData = map['encryptedData'] as String? ?? '';
+          final iv = map['iv'] as String? ?? '';
+
+          final decryptedStr =
+              _cryptoService!.decryptPayload(encryptedData, iv);
+          if (decryptedStr.isNotEmpty) {
+            try {
+              final historyJson =
+                  jsonDecode(decryptedStr) as Map<String, dynamic>;
+              final webHistory = WebHistory.fromJson(historyJson);
+              _historyReceivedController.add(webHistory);
+            } catch (e) {
+              debugPrint('❌ Failed to parse decrypted history: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -719,9 +901,6 @@ class NetworkSyncService {
 
   Future<void> _pollAcks() async {}
 
-
-
-
   // ─────────────────────────────────────────────
   // Connection Management
   // ─────────────────────────────────────────────
@@ -786,11 +965,14 @@ class NetworkSyncService {
 
     // If parent, connect to child's TCP server — only set state AFTER TCP connects
     if (_role == 'parent') {
-      _lanData.connectToParent(device.ipAddress, device.port, _pairToken).then((connected) {
+      _lanData
+          .connectToParent(device.ipAddress, device.port, _pairToken)
+          .then((connected) {
         if (connected) {
           _updateState(NetworkConnectionState.lan);
         } else {
-          debugPrint('⚠️ [DEVICE FOUND] TCP handshake failed to ${device.ipAddress} — staying on current state');
+          debugPrint(
+              '⚠️ [DEVICE FOUND] TCP handshake failed to ${device.ipAddress} — staying on current state');
         }
       });
       // DON'T set state to LAN here — wait for TCP to actually connect
@@ -840,29 +1022,32 @@ class NetworkSyncService {
     final encrypted = _cryptoService!.encryptPayload(profileData);
 
     try {
-      final response = await http.post(
-        Uri.parse('$_relayBaseUrl/api/child/register'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_pairToken',
-          'Connection': 'keep-alive',
-        },
-        body: jsonEncode({
-          'childId': childId,
-          'name': name,
-          'age': age,
-          'avatarUrl': avatarPath,
-          'settings': settings ?? {},
-          'encryptedData': encrypted['data'],
-          'iv': encrypted['iv'],
-        }),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .post(
+            Uri.parse('$_relayBaseUrl/api/child/register'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_pairToken',
+              'Connection': 'keep-alive',
+            },
+            body: jsonEncode({
+              'childId': childId,
+              'name': name,
+              'age': age,
+              'avatarUrl': avatarPath,
+              'settings': settings ?? {},
+              'encryptedData': encrypted['data'],
+              'iv': encrypted['iv'],
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         print('👤 Child profile pushed to relay: $name ($childId)');
         return true;
       } else {
-        print('❌ Child profile push failed: ${response.statusCode} ${response.body}');
+        print(
+            '❌ Child profile push failed: ${response.statusCode} ${response.body}');
         // Add to pending sync for retry
         await _pendingSyncRepo.insert(
           PendingSync(
@@ -889,7 +1074,9 @@ class NetworkSyncService {
 
   /// Sync child profile from relay to local SQLite (child side)
   /// Called on boot and periodically until profile is received
-  Future<bool> syncChildProfile() async { return true; }
+  Future<bool> syncChildProfile() async {
+    return true;
+  }
 
   // ─────────────────────────────────────────────
   // Test Alert (for presentation / demo)
@@ -911,25 +1098,28 @@ class NetworkSyncService {
     final name = childName ?? LocalStorage.getString('child_name', 'Child');
 
     try {
-      final response = await http.post(
-        Uri.parse('$_relayBaseUrl/api/alert/test'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_pairToken',
-        },
-        body: jsonEncode({
-          'app': app,
-          'severity': severity,
-          'alertType': alertType,
-          'childName': name,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$_relayBaseUrl/api/alert/test'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_pairToken',
+            },
+            body: jsonEncode({
+              'app': app,
+              'severity': severity,
+              'alertType': alertType,
+              'childName': name,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 201) {
         debugPrint('🧪 [TEST ALERT] Sent: $app - $severity via relay');
         return true;
       } else {
-        debugPrint('❌ [TEST ALERT] Server returned: ${response.statusCode} ${response.body}');
+        debugPrint(
+            '❌ [TEST ALERT] Server returned: ${response.statusCode} ${response.body}');
         return false;
       }
     } catch (e) {
@@ -941,9 +1131,11 @@ class NetworkSyncService {
   /// Check server health (useful for settings screen)
   Future<Map<String, dynamic>?> checkServerHealth() async {
     try {
-      final response = await http.get(
-        Uri.parse('$_relayBaseUrl/api/health'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http
+          .get(
+            Uri.parse('$_relayBaseUrl/api/health'),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
