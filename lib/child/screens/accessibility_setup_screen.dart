@@ -277,9 +277,7 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
-                          ),
+                          color: const Color(0xFF1C3D7A),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(Icons.shield_rounded, color: Colors.white, size: 24),
@@ -322,7 +320,7 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                       valueColor: AlwaysStoppedAnimation<Color>(
                         _allRequiredDone
                             ? const Color(0xFF10B981)
-                            : const Color(0xFF3B82F6),
+                            : const Color(0xFF1C3D7A),
                       ),
                     ),
                   ),
@@ -415,17 +413,17 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isGranted
+              color: isGranted
               ? const Color(0xFF10B981).withValues(alpha: 0.4)
               : isNext
-                  ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
+                  ? const Color(0xFF1C3D7A).withValues(alpha: 0.4)
                   : const Color(0xFFE2E8F0),
           width: isNext ? 2 : 1,
         ),
         boxShadow: [
           if (isNext)
             BoxShadow(
-              color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
+              color: const Color(0xFF1C3D7A).withValues(alpha: 0.08),
               blurRadius: 12,
               offset: const Offset(0, 4),
             )
@@ -453,7 +451,7 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                   color: isGranted
                       ? const Color(0xFF10B981).withValues(alpha: 0.12)
                       : isNext
-                          ? const Color(0xFF3B82F6).withValues(alpha: 0.12)
+                          ? const Color(0xFF1C3D7A).withValues(alpha: 0.1)
                           : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -462,7 +460,7 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                   color: isGranted
                       ? const Color(0xFF10B981)
                       : isNext
-                          ? const Color(0xFF3B82F6)
+                          ? const Color(0xFF1C3D7A)
                           : const Color(0xFF94A3B8),
                   size: 24,
                 ),
@@ -529,8 +527,9 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                   child: ElevatedButton(
                     onPressed: () => _showInstructionSheet(service),
                     style: ElevatedButton.styleFrom(
+                      minimumSize: Size.zero,
                       backgroundColor: isNext
-                          ? const Color(0xFF3B82F6)
+                          ? const Color(0xFF1C3D7A)
                           : const Color(0xFFF1F5F9),
                       foregroundColor: isNext ? Colors.white : const Color(0xFF64748B),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -597,10 +596,10 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+                      color: const Color(0xFF1C3D7A).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(service.icon, color: const Color(0xFF60A5FA), size: 24),
+                    child: Icon(service.icon, color: const Color(0xFF1C3D7A), size: 24),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -703,7 +702,8 @@ class _AccessibilitySetupScreenState extends State<AccessibilitySetupScreen>
                     service.onRequest();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
+                    minimumSize: const Size.fromHeight(56),
+                    backgroundColor: const Color(0xFF1C3D7A),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
