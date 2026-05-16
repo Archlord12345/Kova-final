@@ -78,24 +78,12 @@ class NetworkSyncService {
   Completer<bool>? _activeReconnect;
   static const _reconnectCooldown = Duration(seconds: 15);
 
-  // ── Bug Fix: Relay circuit breaker ─────────────────────────────────────────
-  // After N consecutive 404 (DEPLOYMENT_NOT_FOUND) responses, stop hitting the
-  // relay for _relayCircuitCooldown to avoid log spam and battery drain.
-  int _relayConsecutive404s = 0;
-  DateTime? _relayCircuitOpenedAt;
-  static const _relayCircuitThreshold = 3;
-  // REDUCED for demo: was 5 minutes, now 30 seconds to recover faster
-  static const _relayCircuitCooldown = Duration(seconds: 30);
-
   // ── Bug Fix: Alert deduplication ───────────────────────────────────────────
   // Prevents the same (app+alertType) from being pushed multiple times within
   // a 10-second window. Key = "app:alertType", value = last push timestamp.
   final Map<String, DateTime> _alertDedupCache = {};
   static const _alertDedupWindow = Duration(seconds: 10);
 
-  // ── Bug Fix: Stale LAN IP detection ───────────────────────────────────────
-  int _lanConsecutiveRefusals = 0;
-  static const _lanStaleIpThreshold = 3;
 
   // Streams for UI
   final _connectionStateController =
@@ -481,7 +469,6 @@ class NetworkSyncService {
               );
               if (connected) {
                 debugPrint('✅ [PUSH ALERT] Connected to child server');
-                _lanConsecutiveRefusals = 0;
                 _activeReconnect!.complete(true);
               } else {
                 _activeReconnect!.complete(false);
@@ -491,7 +478,6 @@ class NetworkSyncService {
               _activeReconnect!.complete(false);
             }
           } catch (e) {
-            _lanConsecutiveRefusals++;
             debugPrint('⚠️ [PUSH ALERT] Reconnect failed: $e');
             _activeReconnect!.complete(false);
           }
@@ -583,14 +569,8 @@ class NetworkSyncService {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    // Poll every 10 seconds instead of 30 — critical for timely parent alerts
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _pollAlerts();
-      _pollHistory();
-    });
-    // Immediate first poll
-    _pollAlerts();
-    _pollHistory();
+    // Pure local mode doesn't poll an internet server.
+    // Parent receives alerts actively via WebSocket or LAN broadcast.
   }
 
   void _startSyncLoop() {
@@ -692,7 +672,6 @@ class NetworkSyncService {
 
   Future<void> _pollAcks() async {}
 
-  Future<void> _pushAcks(List<String> ids) async {}
 
   Future<void> _pollAlerts() async {}
 
@@ -762,15 +741,6 @@ class NetworkSyncService {
     if (_role == 'parent') {
       _lanData.connectToParent(device.ipAddress, device.port, _pairToken).then((connected) {
         if (connected) {
-          // ── Bug Fix: Reset circuit breaker on successful LAN connect ────────
-          // If we got LAN working, we don't need the relay - close the circuit breaker
-          if (_relayCircuitOpenedAt != null) {
-            debugPrint('🔌 [RELAY] LAN connected — closing circuit breaker early');
-            _relayCircuitOpenedAt = null;
-            _relayConsecutive404s = 0;
-          }
-          // Reset stale IP counter on successful connection
-          _lanConsecutiveRefusals = 0;
           _updateState(NetworkConnectionState.lan);
         } else {
           debugPrint('⚠️ [DEVICE FOUND] TCP handshake failed to ${device.ipAddress} — staying on current state');
