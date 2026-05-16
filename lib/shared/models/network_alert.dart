@@ -44,7 +44,6 @@ class NetworkAlertSummary {
 /// Full alert for LAN transfer — includes content preview and scores
 class NetworkAlertFull extends NetworkAlertSummary {
   final double aiConfidence;
-  final String? contentPreview;
   final String? senderInfo;
   final int scoreDelta;
   final double scoreText;
@@ -58,8 +57,8 @@ class NetworkAlertFull extends NetworkAlertSummary {
     required super.alertType,
     required super.childName,
     required super.timestamp,
+    super.contentPreview = '',
     required this.aiConfidence,
-    this.contentPreview,
     this.senderInfo,
     this.scoreDelta = 0,
     this.scoreText = 0.0,
@@ -72,7 +71,6 @@ class NetworkAlertFull extends NetworkAlertSummary {
   Map<String, dynamic> toJson() => {
     ...super.toJson(),
     'aiConfidence': aiConfidence,
-    'contentPreview': contentPreview,
     'senderInfo': senderInfo,
     'scoreDelta': scoreDelta,
     'scoreText': scoreText,
@@ -90,8 +88,8 @@ class NetworkAlertFull extends NetworkAlertSummary {
       timestamp: json['timestamp'] != null
           ? DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now()
           : DateTime.now(),
+      contentPreview: json['contentPreview'] as String? ?? '',
       aiConfidence: (json['aiConfidence'] as num?)?.toDouble() ?? 0.0,
-      contentPreview: json['contentPreview'] as String?,
       senderInfo: json['senderInfo'] as String?,
       scoreDelta: json['scoreDelta'] as int? ?? 0,
       scoreText: (json['scoreText'] as num?)?.toDouble() ?? 0.0,
