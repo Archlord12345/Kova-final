@@ -860,6 +860,17 @@ class DetectionOrchestrator {
   /// Unblock an app (called from parent dashboard via network sync)
   Future<void> unblockApp(String app) async {
     _blockedApps.remove(app);
+
+    // Notify native Android layer to dismiss the overlay
+    try {
+      final pkg = _pkgMap[app] ?? app;
+      const channel = MethodChannel('com.kova.child/blocker');
+      await channel.invokeMethod('unblockApp', {'pkg': pkg});
+      if (kDebugMode) debugPrint('🔓 [UNBLOCK] Instructed native service to dismiss overlay for $app');
+    } catch (e) {
+      debugPrint('⚠️ [UNBLOCK] Failed to call native unblock for $app: $e');
+    }
+
     if (_childId != null) {
       try {
         await _childRepo.setAppBlocked(_childId!, app, false);

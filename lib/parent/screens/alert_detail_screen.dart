@@ -26,6 +26,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
   late Animation<double> _actionsFade;
 
   bool _contentUnlocked = false;
+  late bool _isResolved;
 
   @override
   void initState() {
@@ -34,6 +35,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
+    _isResolved = widget.alert.resolved;
     _bannerFade = _fade(0.0, 0.3);
     _detailsFade = _fade(0.15, 0.5);
     _previewFade = _fade(0.3, 0.65);
@@ -532,7 +534,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
           ),
           const SizedBox(height: 2),
           Text(
-            widget.alert.resolved
+            _isResolved
                 ? '${_capitalize(widget.alert.app)} was blocked — resolved'
                 : '${_capitalize(widget.alert.app)} automatically blocked — 20 min',
             style: GoogleFonts.nunito(
@@ -553,7 +555,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
     return Column(
       children: [
         // Unblock now (only if blocked)
-        if (!widget.alert.resolved)
+        if (!_isResolved)
           SizedBox(
             width: double.infinity,
             height: 48,
@@ -577,7 +579,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
               ),
             ),
           ),
-        if (!widget.alert.resolved) const SizedBox(height: 10),
+        if (!_isResolved) const SizedBox(height: 10),
 
         // Block permanently
         SizedBox(
@@ -594,7 +596,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
               elevation: 0,
             ),
             child: Text(
-              widget.alert.resolved ? 'Permanently blocked' : 'Block permanently',
+              _isResolved ? 'Permanently blocked' : 'Block permanently',
               style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -698,7 +700,13 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
       } else if (action == 'unblock') {
         await service.unblockApp(widget.alert.app);
       }
-      setState(() {}); // Refresh UI
+      
+      // Update local DB to mark this alert as resolved
+      await AlertRepository().resolve(widget.alert.id);
+      
+      setState(() {
+        _isResolved = true;
+      }); // Refresh UI
     }
   }
 }
