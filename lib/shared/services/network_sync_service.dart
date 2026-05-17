@@ -370,7 +370,7 @@ class NetworkSyncService {
       await LocalStorage.setLastChildPeer(localPeer.toJson());
 
       // After pairing via UDP discovery, establish TCP data channel IMMEDIATELY
-      final connected = await _lanData.connectToParent(
+      final connected = await _lanData.connectAsParent(
           localPeer.ipAddress, 18757, _pairToken);
       if (connected) {
         debugPrint('✅ [LAN] TCP data channel established');
@@ -586,7 +586,7 @@ class NetworkSyncService {
             if (discoveredChild != null) {
               debugPrint(
                   '🔍 [PUSH ALERT] Found child via discovery: ${discoveredChild.ipAddress}:${discoveredChild.port}');
-              final connected = await _lanData.connectToParent(
+              final connected = await _lanData.connectAsParent(
                   discoveredChild.ipAddress, discoveredChild.port, _pairToken);
               if (connected) {
                 debugPrint('✅ [PUSH ALERT] Connected to child server');
@@ -810,7 +810,7 @@ class NetworkSyncService {
       debugPrint(
           '🔍 [PARENT POLL] Found child at ${peer.ipAddress}:${peer.port}');
       try {
-        final connected = await _lanData.connectToParent(
+        final connected = await _lanData.connectAsParent(
           peer.ipAddress,
           peer.port,
           _pairToken,
@@ -1091,7 +1091,7 @@ class NetworkSyncService {
     // If parent, connect to child's TCP server — only set state AFTER TCP connects
     if (_role == 'parent') {
       _lanData
-          .connectToParent(device.ipAddress, device.port, _pairToken)
+          .connectAsParent(device.ipAddress, device.port, _pairToken)
           .then((connected) {
         if (connected) {
           _updateState(NetworkConnectionState.lan);
