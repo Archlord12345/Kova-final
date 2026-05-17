@@ -92,7 +92,7 @@ class _ParentConnectionScreenState extends State<ParentConnectionScreen>
         await LocalStorage.setString('device_id', deviceId);
       }
 
-      // Claim code from Vercel relay (parent assigned it)
+      // Claim code from Railway relay (parent assigned it)
       final pairToken = await networkSync.claimPairingCode(code);
 
       if (pairToken != null) {

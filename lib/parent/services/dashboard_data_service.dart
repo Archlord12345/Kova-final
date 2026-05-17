@@ -100,7 +100,7 @@ class DashboardDataService extends ChangeNotifier {
 
     debugPrint('✅ [PARENT] onAlertReceived subscription active');
 
-    // Listen for alerts from network (both LAN and Vercel relay)
+    // Listen for alerts from network (both LAN and Railway relay)
     _alertSub = _networkSync.onAlertReceived.listen((alert) async {
       debugPrint('🔔 [PARENT] Alert received via LAN!');
       debugPrint('  severity = ${alert.severity}');

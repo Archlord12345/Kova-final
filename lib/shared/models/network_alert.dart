@@ -1,6 +1,6 @@
 // shared/models/network_alert.dart — Tiered alert model for network transfer
 
-/// Lightweight alert for internet relay (Vercel) — summary only
+/// Lightweight alert for internet relay (Railway) — summary only
 class NetworkAlertSummary {
   final String severity;
   final String app;
