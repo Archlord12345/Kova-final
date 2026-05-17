@@ -664,7 +664,7 @@ class SegmentedRingPainter extends CustomPainter {
     // For 92, almost all segments are active. We'll draw 4 arcs with gaps.
     const int totalSegments = 4;
     const double gapAngle = 0.3; // radians
-    final double sweepAngle = (2 * 3.141592653589793 - (gapAngle * totalSegments)) / totalSegments;
+    const double sweepAngle = (2 * 3.141592653589793 - (gapAngle * totalSegments)) / totalSegments;
     
     int segmentsToFill = (score / 25).ceil();
     if (segmentsToFill > totalSegments) segmentsToFill = totalSegments;

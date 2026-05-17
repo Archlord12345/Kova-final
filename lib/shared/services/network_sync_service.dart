@@ -652,7 +652,6 @@ class NetworkSyncService {
 
         if (response.statusCode == 201) {
           debugPrint('📤 History pushed to relay');
-          delivered = true;
           if (itemId != null) {
             await _pendingSyncRepo.deleteList([itemId]);
           }

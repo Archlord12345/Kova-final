@@ -155,7 +155,7 @@ class DashboardDataService extends ChangeNotifier {
       try {
         final severity = alert.severity;
         final app = alert.app;
-        final childName = child?.name ?? 'Your child';
+        final childName = child.name;
 
         final title = switch (severity) {
           'critical' => '🚨 ALERTE CRITIQUE — $childName',
