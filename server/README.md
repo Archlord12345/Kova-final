@@ -37,6 +37,7 @@ Le repo contient `railway.toml`, `railway.json` et `nixpacks.toml` configurés p
 - Build: no-op (`echo 'No build step required for Express backend'`)
 - Start: `npm start --prefix server`
 - Healthcheck: `/api/health`
+- Production relay URL: `https://kova-final-production.up.railway.app`
 
 ## Render
 

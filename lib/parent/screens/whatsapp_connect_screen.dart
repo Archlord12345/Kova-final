@@ -181,7 +181,7 @@ class _WhatsappConnectScreenState extends State<WhatsappConnectScreen>
     super.dispose();
   }
 
-  /// Assign a random code from the pre-registered pool and register with Vercel
+  /// Assign a random code from the pre-registered pool and register with Railway
   Future<void> _loadPairingCode() async {
     final children = await _childRepo.getAll();
     String childId;
@@ -207,7 +207,7 @@ class _WhatsappConnectScreenState extends State<WhatsappConnectScreen>
     if (!mounted) return;
     setState(() => _pairingCode = code);
 
-    // Register with Vercel Relay
+    // Register with Railway relay
     final networkSync = NetworkSyncService();
     await networkSync.start(role: 'parent'); // Start offline discovery
     final registered = await networkSync.registerPairingCode(code);
@@ -230,7 +230,7 @@ class _WhatsappConnectScreenState extends State<WhatsappConnectScreen>
     if (_isDisposed || _isConnected) return;
     
     final networkSync = NetworkSyncService();
-    // Poll Vercel for claim status
+    // Poll Railway for claim status
     final token = await networkSync.checkPairingStatus(code);
     
     if (token != null) {

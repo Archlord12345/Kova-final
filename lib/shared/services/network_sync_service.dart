@@ -27,14 +27,11 @@ class NetworkSyncService {
   NetworkSyncService._();
 
   // ── Configurable relay URL ─────────────────────────────────────────────────
-  // Default: Vercel backend deployment. Can be overridden to local/Render/Railway.
+  // Default: Railway backend deployment used by parent/child relay communication.
   // Set via: LocalStorage.setString('relay_url', 'http://192.168.x.x:3000')
-  static const String _defaultRelayUrl =
-      'https://kova-final-git-main-raveliop12345s-projects.vercel.app';
-  static const String vercelPreviewRelayUrl =
-      'https://kova-final-h7eumg1nd-raveliop12345s-projects.vercel.app';
+  static const String _defaultRelayUrl = railwayRelayUrl;
   static const String railwayRelayUrl =
-      'https://kova-production-3f1f.up.railway.app';
+      'https://kova-final-production.up.railway.app';
 
   static String _normalizeRelayUrl(String url) {
     var normalized = url.trim();

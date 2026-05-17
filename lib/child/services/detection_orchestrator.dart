@@ -689,9 +689,9 @@ class DetectionOrchestrator {
 
       // We explicitly construct Summary here just in case, but really
       // NetworkSyncService used to do this. We'll just serialize it as NetworkAlertSummary
-      // to the queue so it takes less space and is ready for Vercel.
+      // to the queue so it takes less space and is ready for Railway.
       // Wait, LAN might want full data. 
-      // If we put full data in the queue, NetworkSyncService can downcast it when sending to Vercel.
+      // If we put full data in the queue, NetworkSyncService can downcast it when sending to Railway.
       final pendingItem = PendingSync(
         id: 'alert_${DateTime.now().millisecondsSinceEpoch}',
         type: 'alert',
