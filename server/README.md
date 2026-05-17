@@ -50,12 +50,6 @@ Le fichier `render.yaml` déclare un service web Node avec :
 
 Le fichier racine `vercel.json` route toutes les requêtes vers `server/src/index.js`, qui exporte l'app Express pour `@vercel/node`.
 
-Backends Vercel connus pour ce projet :
-
-- `https://kova-final-git-main-raveliop12345s-projects.vercel.app`
-- `https://kova-final-h7eumg1nd-raveliop12345s-projects.vercel.app`
-
-Le client Flutter utilise par défaut l'URL `git-main`; l'URL `h7eumg1nd` reste disponible comme preset de secours dans les réglages.
 
 > Note: le relay utilise un store mémoire. C'est adapté à Railway/Render et aux démos Vercel. Pour un Vercel fortement scalé ou sans pertes au cold-start, ajoutez une base externe (`DATABASE_URL`) ou un KV/Redis et adaptez le store relay.
 
