@@ -1,5 +1,0 @@
-Analyzing kova...                                               
-
-  error • Expected an identifier • lib/screens/alert_history_screen.dart:217:23 • missing_identifier
-  error • Expected to find ')' • lib/screens/alert_history_screen.dart:217:23 • expected_token
-

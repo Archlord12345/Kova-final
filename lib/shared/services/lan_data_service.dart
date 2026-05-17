@@ -65,11 +65,12 @@ class LanDataService {
     _connectionStateController.add(false);
   }
 
-  Future<bool> connectToChild(String ip, int port, [String pairToken = '']) async {
+  Future<bool> connectAsParent(String ip, int port, [String pairToken = '']) async {
     if (pairToken.isNotEmpty) {
       _pairToken = pairToken;
     }
     try {
+      print('🔗 [LAN DATA] Connecting to child as parent at $ip:$port');
       await NativeNetworkService().connectToParent(ip, port);
       // Send handshake
       final handshake = {
@@ -80,16 +81,17 @@ class LanDataService {
       await NativeNetworkService().sendMessage(handshake);
       return true;
     } catch (e) {
-      print('❌ [LAN DATA] Connection failed: $e');
+      print('❌ [LAN DATA] Connection failed (as parent): $e');
       return false;
     }
   }
 
-  Future<bool> connectToParent(String ip, int port, [String pairToken = '']) async {
+  Future<bool> connectAsChild(String ip, int port, [String pairToken = '']) async {
     if (pairToken.isNotEmpty) {
       _pairToken = pairToken;
     }
     try {
+      print('🔗 [LAN DATA] Connecting to parent as child at $ip:$port');
       await NativeNetworkService().connectToParent(ip, port);
       // Send handshake
       final handshake = {
@@ -100,7 +102,7 @@ class LanDataService {
       await NativeNetworkService().sendMessage(handshake);
       return true;
     } catch (e) {
-      print('❌ [LAN DATA] Connection failed: $e');
+      print('❌ [LAN DATA] Connection failed (as child): $e');
       return false;
     }
   }

@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
+import android.net.wifi.WifiManager
 import androidx.core.app.NotificationCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -25,6 +26,9 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
     private var wsServer: KovaWebSocketServer? = null
     private var wsClient: KovaWebSocketClient? = null
 
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
     init {
         setupChannels()
         setupConnectivity()
@@ -33,11 +37,13 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
     private fun setupChannels() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
             .setMethodCallHandler { call, result ->
+                Log.d(TAG, "📡 [NATIVE] Method call: ${call.method}")
                 when (call.method) {
                     "startServer" -> {
                         val port = call.argument<Int>("port") ?: 18757
                         val name = call.argument<String>("name") ?: "KovaChild"
                         val attributes = call.argument<Map<String, String>>("attributes")
+                        acquireWifiLock()
                         startServer(port, name, attributes)
                         result.success(true)
                     }
@@ -51,6 +57,7 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
                     }
                     "stopDiscovery" -> {
                         nsdManager.stopDiscovery()
+                        releaseMulticastLock()
                         result.success(true)
                     }
                     "connectToParent" -> {
@@ -90,6 +97,7 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
 
     private fun setupConnectivity() {
         connectivity = KovaConnectivity(context) { isConnected ->
+            Log.d(TAG, "🌐 Network status changed: connected=$isConnected")
             sendEvent("network_status", JSONObject().put("connected", isConnected).toString())
         }
         connectivity?.startMonitoring()
@@ -98,15 +106,19 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
     // ── Server Methods (Child Side) ──
     private fun startServer(port: Int, serviceName: String, attributes: Map<String, String>? = null) {
         stopServer()
+        Log.d(TAG, "🚀 Starting WebSocket server on port $port ($serviceName)")
         wsServer = KovaWebSocketServer(
             port = port,
             onMessageReceived = { message ->
+                Log.d(TAG, "📥 [SERVER] Message received: $message")
                 sendEvent("message_received", message)
             },
             onClientConnected = {
+                Log.d(TAG, "🤝 [SERVER] Client connected")
                 sendEvent("client_connected", "{}")
             },
             onClientDisconnected = {
+                Log.d(TAG, "👋 [SERVER] Client disconnected")
                 sendEvent("client_disconnected", "{}")
             }
         )
@@ -115,14 +127,19 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
     }
 
     private fun stopServer() {
+        Log.d(TAG, "🛑 Stopping WebSocket server and releasing locks")
         wsServer?.stop()
+        releaseWifiLock()
         wsServer = null
         nsdManager.unregisterService()
     }
 
     // ── Discovery & Client Methods (Parent Side) ──
     private fun startDiscovery() {
+        Log.d(TAG, "🔍 Starting mDNS discovery")
+        acquireMulticastLock()
         nsdManager.discoverServices { ip, port, name, attributes ->
+            Log.d(TAG, "✨ [DISCOVERY] Found service: $name at $ip:$port")
             val data = JSONObject().apply {
                 put("ip", ip)
                 put("port", port)
@@ -134,17 +151,21 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
     }
 
     private fun connectClient(host: String, port: Int) {
+        Log.d(TAG, "🔗 Connecting to $host:$port")
         wsClient?.disconnect()
         wsClient = KovaWebSocketClient(
             host = host,
             port = port,
             onMessageReceived = { message ->
+                Log.d(TAG, "📥 [CLIENT] Message received: $message")
                 sendEvent("message_received", message)
             },
             onConnected = {
+                Log.d(TAG, "🤝 [CLIENT] Connected to server")
                 sendEvent("client_connected", "{}")
             },
             onDisconnected = {
+                Log.d(TAG, "👋 [CLIENT] Disconnected from server")
                 sendEvent("client_disconnected", "{}")
             }
         )
@@ -154,7 +175,11 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
     // ── Shared ──
     private fun sendMessage(message: String): Boolean {
         // Try server broadcast first (if child), then client send (if parent)
-        return wsServer?.broadcastMessage(message) ?: wsClient?.sendMessage(message) ?: false
+        val success = wsServer?.broadcastMessage(message) ?: wsClient?.sendMessage(message) ?: false
+        if (!success) {
+            Log.w(TAG, "❌ Failed to send message (no active server/client): $message")
+        }
+        return success
     }
 
     private fun sendEvent(type: String, payload: String) {
@@ -168,7 +193,6 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
                     val alertData = json.optJSONObject("alert")
                     if (alertData != null) {
                         val appName = alertData.optString("app", "Application")
-                        val alertType = alertData.optString("alertType", "Alerte de sécurité")
                         val reason = alertData.optString("reason", "Activité suspecte détectée")
                         showNativeNotification(appName, reason)
                     }
@@ -208,7 +232,6 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Need an icon, using a generic android icon as fallback
         val iconResId = context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
         val finalIcon = if (iconResId != 0) iconResId else android.R.drawable.ic_dialog_alert
 
@@ -228,5 +251,65 @@ class KovaNetworkModule(private val context: Context, private val flutterEngine:
         wsClient?.disconnect()
         nsdManager.stopDiscovery()
         connectivity?.stopMonitoring()
+    }
+
+    private fun acquireMulticastLock() {
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifiManager.createMulticastLock("kova_discovery").apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+            Log.d(TAG, "✅ MulticastLock acquired")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to acquire MulticastLock: ${e.message}")
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        try {
+            multicastLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(TAG, "✅ MulticastLock released")
+                }
+            }
+            multicastLock = null
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error releasing MulticastLock: ${e.message}")
+        }
+    }
+
+    private fun acquireWifiLock() {
+        try {
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wifiLock = wm.createWifiLock(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                else
+                    @Suppress("DEPRECATION") WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "kova_data_socket"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.d(TAG, "✅ WifiLock acquired (HIGH_PERF)")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to acquire WifiLock: ${e.message}")
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            wifiLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(TAG, "✅ WifiLock released")
+                }
+            }
+            wifiLock = null
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error releasing WifiLock: ${e.message}")
+        }
     }
 }
