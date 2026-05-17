@@ -33,7 +33,7 @@ curl http://127.0.0.1:3000/api/health
 
 Le repo contient `railway.toml`, `railway.json` et `nixpacks.toml` configurés pour installer et démarrer uniquement `server` :
 
-- Build: `if [ -f server/package-lock.json ]; then npm ci --omit=dev --prefix server; else npm install --omit=dev --prefix server; fi`
+- Build: `npm ci --omit=dev --prefix server`
 - Start: `npm start --prefix server`
 - Healthcheck: `/api/health`
 
@@ -42,20 +42,14 @@ Le repo contient `railway.toml`, `railway.json` et `nixpacks.toml` configurés p
 Le fichier `render.yaml` déclare un service web Node avec :
 
 - `rootDir: server`
-- Build: `if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi`
+- Build: `npm ci --omit=dev`
 - Start: `npm start`
 - Healthcheck: `/api/health`
 
 ## Vercel
 
-Le fichier racine `vercel.json` route toutes les requêtes vers `server/src/index.js`, qui exporte l'app Express pour `@vercel/node`. La commande d'installation utilise `npm ci` quand `server/package-lock.json` est présent et bascule sur `npm install` si Vercel/Railway construit depuis une archive sans lockfile.
+Le fichier racine `vercel.json` route toutes les requêtes vers `server/src/index.js`, qui exporte l'app Express pour `@vercel/node`.
 
-Backends Vercel connus pour ce projet :
-
-- `https://kova-final-git-main-raveliop12345s-projects.vercel.app`
-- `https://kova-final-h7eumg1nd-raveliop12345s-projects.vercel.app`
-
-Le client Flutter utilise par défaut l'URL `git-main`; l'URL `h7eumg1nd` reste disponible comme preset de secours dans les réglages.
 
 > Note: le relay utilise un store mémoire. C'est adapté à Railway/Render et aux démos Vercel. Pour un Vercel fortement scalé ou sans pertes au cold-start, ajoutez une base externe (`DATABASE_URL`) ou un KV/Redis et adaptez le store relay.
 

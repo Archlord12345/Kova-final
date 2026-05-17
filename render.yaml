@@ -4,7 +4,7 @@ services:
     env: node
     rootDir: server
     plan: free
-    buildCommand: "if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi"
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true

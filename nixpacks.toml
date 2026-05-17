@@ -2,7 +2,7 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["if [ -f server/package-lock.json ]; then npm ci --omit=dev --prefix server; else npm install --omit=dev --prefix server; fi"]
+cmds = ["npm ci --omit=dev --prefix server"]
 
 [phases.build]
 cmds = []

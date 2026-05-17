@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "installCommand": "if [ -f server/package-lock.json ]; then npm ci --prefix server; else npm install --prefix server; fi",
+  "installCommand": "npm ci --prefix server",
   "buildCommand": "echo 'KOVA backend: no build step required'",
   "builds": [
     {
