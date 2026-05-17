@@ -254,29 +254,7 @@ class NetworkSyncService {
   // Pairing (Railway-based)
   // ─────────────────────────────────────────────
 
-  /// Register a pairing code for LAN offline discovery (parent side)
-  Future<bool> registerPairingCode(String code) async {
-    _lanDiscovery.setActivePairCode(code); // For offline LAN discovery
-
-    // Ensure LAN discovery is running in pairing mode
-    if (!_lanDiscovery.isRunning) {
-      if (_deviceId.isEmpty) {
-        _deviceId = LocalStorage.getString('device_id');
-        if (_deviceId.isEmpty) {
-          _deviceId = const Uuid().v4();
-          await LocalStorage.setString('device_id', _deviceId);
-        }
-      }
-      await _lanDiscovery.start(role: 'parent', pairingMode: true);
-    }
-
-    print('📱 Code $code registered for local LAN pairing by parent');
-    return true;
-  }
-
-  /// Claim a pairing code and get pair token (child side)
-  Future<String?> claimPairingCode(String code) async {
-    // 1. Ensure we have a device ID
+  Future<void> _ensureDeviceId() async {
     if (_deviceId.isEmpty) {
       _deviceId = LocalStorage.getString('device_id');
       if (_deviceId.isEmpty) {
@@ -284,6 +262,49 @@ class NetworkSyncService {
         await LocalStorage.setString('device_id', _deviceId);
       }
     }
+  }
+
+  /// Register a pairing code for LAN discovery and Internet relay fallback.
+  Future<bool> registerPairingCode(String code) async {
+    await _ensureDeviceId();
+    _lanDiscovery.setActivePairCode(code); // For offline LAN discovery
+
+    // Ensure LAN discovery is running in pairing mode.
+    if (!_lanDiscovery.isRunning) {
+      await _lanDiscovery.start(role: 'parent', pairingMode: true);
+    }
+
+    var relayRegistered = false;
+    if (!isOfflineMode) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$_relayBaseUrl/api/pair/register'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'code': code, 'parentDeviceId': _deviceId}),
+            )
+            .timeout(const Duration(seconds: 8));
+        relayRegistered = response.statusCode == 200 || response.statusCode == 201;
+        if (!relayRegistered) {
+          debugPrint(
+              '⚠️ Pair code relay register failed: ${response.statusCode} ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Pair code relay register error: $e');
+      }
+    }
+
+    print(relayRegistered
+        ? '📱 Code $code registered for LAN + relay pairing by parent'
+        : '📱 Code $code registered for local LAN pairing only');
+    // LAN registration is enough to let same-network devices pair.
+    return true;
+  }
+
+  /// Claim a pairing code and get pair token (child side)
+  Future<String?> claimPairingCode(String code) async {
+    // 1. Ensure we have a device ID
+    await _ensureDeviceId();
 
     // 2. Try local LAN discovery first (with retry for timing issues)
     if (!_lanDiscovery.isRunning) {
@@ -377,9 +398,49 @@ class NetworkSyncService {
       return _pairToken;
     }
 
-    // 3. Pure local fallback - return null if LAN fails
-    print(
-        '❌ Claim failed: Parent not found on local network (Pure Local Mode)');
+    // 3. Internet relay fallback for different networks / mobile data
+    if (!isOfflineMode) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$_relayBaseUrl/api/pair/claim'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'code': code, 'childDeviceId': _deviceId}),
+            )
+            .timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final token = data['pairToken'] as String? ?? '';
+          if (token.isNotEmpty) {
+            _pairToken = token;
+            await LocalStorage.setPairToken(_pairToken);
+            await LocalStorage.setChildDeviceId(_deviceId);
+            final parentDeviceId = data['parentDeviceId'] as String? ?? '';
+            if (parentDeviceId.isNotEmpty) {
+              await LocalStorage.setParentDeviceId(parentDeviceId);
+            }
+            _cryptoService = CryptoService(_pairToken);
+            _updateState(NetworkConnectionState.internet);
+            _startSyncLoop();
+            _pairingCompleteController.add({
+              'method': 'relay',
+              'pairToken': _pairToken,
+              'role': 'child',
+            });
+            print('🔗 Pairing claimed via relay!');
+            return _pairToken;
+          }
+        } else {
+          debugPrint(
+              '⚠️ Relay claim failed: ${response.statusCode} ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Relay claim error: $e');
+      }
+    }
+
+    print('❌ Claim failed: parent not found on LAN or relay');
     return null;
   }
 
@@ -420,6 +481,35 @@ class NetworkSyncService {
 
       print('🔗 Child connected via LAN, pairing complete');
       return _pairToken;
+    }
+
+    if (!isOfflineMode) {
+      try {
+        final response = await http
+            .get(Uri.parse('$_relayBaseUrl/api/pair/status?code=$code'))
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final token = data['pairToken'] as String? ?? '';
+          final paired = data['paired'] == true || data['claimed'] == true;
+          if (paired && token.isNotEmpty) {
+            _pairToken = token;
+            await LocalStorage.setPairToken(_pairToken);
+            _cryptoService = CryptoService(_pairToken);
+            _updateState(NetworkConnectionState.internet);
+            _startPolling();
+            _pairingCompleteController.add({
+              'method': 'relay',
+              'pairToken': _pairToken,
+              'role': 'parent',
+            });
+            print('🔗 Child connected via relay, pairing complete');
+            return _pairToken;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Relay status check error: $e');
+      }
     }
 
     return null;
@@ -840,15 +930,13 @@ class NetworkSyncService {
   Future<void> _syncChildProfileIfNeeded() async {
     if (_role != 'child' || _pairToken.isEmpty) return;
 
-    // Check if we already have a profile
+    final currentName = LocalStorage.getString('child_name');
     final childId = LocalStorage.getChildId();
-    if (childId == null) return;
+    if (childId == null && currentName.isEmpty) return;
 
-    final childRepo = ChildRepository();
-    final existing = await childRepo.getById(childId);
-    if (existing != null) return; // Already have profile
+    // Retry while the child still has the temporary local placeholder.
+    if (currentName.isNotEmpty && currentName != 'Connected Device') return;
 
-    // Try to sync profile from relay
     print('🔄 Periodic child profile sync attempt...');
     await syncChildProfile();
   }
@@ -1075,7 +1163,7 @@ class NetworkSyncService {
           PendingSync(
             id: const Uuid().v4(),
             type: 'child_profile',
-            payload: jsonEncode(profileData),
+            payload: profileData,
           ),
         );
         return false;
@@ -1094,10 +1182,61 @@ class NetworkSyncService {
     }
   }
 
-  /// Sync child profile from relay to local SQLite (child side)
-  /// Called on boot and periodically until profile is received
+  /// Sync child profile from relay to local SQLite (child side).
+  /// Called on boot and periodically until profile is received.
   Future<bool> syncChildProfile() async {
-    return true;
+    if (_pairToken.isEmpty) return false;
+    _cryptoService ??= CryptoService(_pairToken);
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_relayBaseUrl/api/child/profile'),
+        headers: {'Authorization': 'Bearer $_pairToken'},
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200) return false;
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final profile = data['profile'] as Map<String, dynamic>? ?? data;
+      final encryptedData = profile['encryptedData'] as String? ?? '';
+      final iv = profile['iv'] as String? ?? '';
+
+      Map<String, dynamic> decodedProfile = profile;
+      if (encryptedData.isNotEmpty && iv.isNotEmpty) {
+        final decrypted = _cryptoService!.decryptPayload(encryptedData, iv);
+        if (decrypted.isNotEmpty) {
+          decodedProfile = jsonDecode(decrypted) as Map<String, dynamic>;
+        }
+      }
+
+      final childId = decodedProfile['childId'] as String? ?? '';
+      final name = decodedProfile['name'] as String? ?? 'Connected Device';
+      final ageValue = decodedProfile['age'];
+      final age = ageValue is int
+          ? ageValue
+          : int.tryParse(ageValue?.toString() ?? '') ?? 10;
+      if (childId.isEmpty) return false;
+
+      final childRepo = ChildRepository();
+      final existing = await childRepo.getById(childId);
+      if (existing == null) {
+        final localId = await childRepo.create(name, age: age);
+        if (localId != childId) {
+          await LocalStorage.setChildId(localId);
+        }
+      } else {
+        await childRepo.updateName(childId, name);
+        await childRepo.updateAge(childId, age);
+        await LocalStorage.setChildId(childId);
+      }
+      await LocalStorage.setString('child_name', name);
+      await LocalStorage.setInt('child_age', age);
+      print('👤 Child profile synced from relay: $name');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ Child profile sync error: $e');
+      return false;
+    }
   }
 
   // ─────────────────────────────────────────────

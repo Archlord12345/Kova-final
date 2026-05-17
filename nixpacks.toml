@@ -2,13 +2,10 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = [
-    "cd server && npm cache clean --force",
-    "cd server && npm install --omit=dev"
-]
+cmds = ["npm ci --omit=dev --prefix server"]
 
 [phases.build]
 cmds = []
 
 [start]
-cmd = "cd server && npm start"
+cmd = "npm start --prefix server"

@@ -127,27 +127,47 @@ router.post('/connect', async (req, res) => {
 // These provide temporary storage for pairing codes when LAN is unavailable
 // ═══════════════════════════════════════════════════════════════════════════
 
-const relayStore = new Map(); // code -> { parentDeviceId, childDeviceId, pairToken, timestamp }
-const RELAY_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const relayStore = new Map(); // code -> { parentDeviceId, childDeviceId, pairToken, timestamp, status }
+const RELAY_TTL_MS = Number(process.env.PAIRING_CODE_TTL_MS || 15 * 60 * 1000); // 15 minutes
+const MAX_PAIRING_CODES = Number(process.env.MAX_PAIRING_CODES || 10000);
+
+function normalizePairingCode(code) {
+  return String(code || '').trim().toUpperCase();
+}
+
+function cleanupRelayStore() {
+  const now = Date.now();
+  for (const [key, value] of relayStore.entries()) {
+    if (now - value.timestamp > RELAY_TTL_MS) {
+      relayStore.delete(key);
+    }
+  }
+
+  if (relayStore.size <= MAX_PAIRING_CODES) return;
+  const oldest = [...relayStore.entries()]
+    .sort((a, b) => a[1].timestamp - b[1].timestamp)
+    .slice(0, relayStore.size - MAX_PAIRING_CODES);
+  for (const [key] of oldest) relayStore.delete(key);
+}
 
 // ── POST /api/pair/register ──
 // Parent registers a pairing code with the relay
 router.post('/register', async (req, res) => {
   try {
-    const { code, parentDeviceId } = req.body;
+    let { code, parentDeviceId } = req.body || {};
+    code = normalizePairingCode(code);
     
     if (!code || !parentDeviceId) {
       return res.status(400).json({ error: 'code and parentDeviceId required' });
     }
     
-    // Clean up expired entries
-    const now = Date.now();
-    for (const [key, value] of relayStore.entries()) {
-      if (now - value.timestamp > RELAY_TTL_MS) {
-        relayStore.delete(key);
-      }
+    if (!/^[A-Z0-9-]{4,32}$/.test(code)) {
+      return res.status(400).json({ error: 'Invalid pairing code format' });
     }
-    
+
+    cleanupRelayStore();
+    const now = Date.now();
+
     // Store the pairing request
     relayStore.set(code, {
       code,
@@ -159,7 +179,7 @@ router.post('/register', async (req, res) => {
     });
     
     console.log(`📡 Pair code registered: ${code}`);
-    res.status(201).json({ success: true, code });
+    res.status(201).json({ success: true, code, expiresIn: Math.floor(RELAY_TTL_MS / 1000) });
   } catch (err) {
     console.error('Pair register error:', err);
     res.status(500).json({ error: 'Failed to register code' });
@@ -170,12 +190,14 @@ router.post('/register', async (req, res) => {
 // Child claims a pairing code and gets the pair token
 router.post('/claim', async (req, res) => {
   try {
-    const { code, childDeviceId } = req.body;
+    let { code, childDeviceId } = req.body || {};
+    code = normalizePairingCode(code);
     
     if (!code || !childDeviceId) {
       return res.status(400).json({ error: 'code and childDeviceId required' });
     }
     
+    cleanupRelayStore();
     const entry = relayStore.get(code);
     
     if (!entry) {
@@ -188,12 +210,16 @@ router.post('/claim', async (req, res) => {
       return res.status(404).json({ error: 'Code expired' });
     }
     
+    if (entry.childDeviceId && entry.childDeviceId !== childDeviceId) {
+      return res.status(409).json({ error: 'Code already claimed by another device' });
+    }
+
     // Generate pair token if not already done
     if (!entry.pairToken) {
       entry.pairToken = uuidv4();
-      entry.childDeviceId = childDeviceId;
-      entry.status = 'claimed';
     }
+    entry.childDeviceId = childDeviceId;
+    entry.status = 'claimed';
     
     console.log(`🔗 Pair code claimed: ${code} -> token: ${entry.pairToken.substring(0, 8)}...`);
     res.json({ 
@@ -211,12 +237,14 @@ router.post('/claim', async (req, res) => {
 // Check if a code has been claimed
 router.get('/status', async (req, res) => {
   try {
-    const { code } = req.query;
+    let { code } = req.query;
+    code = normalizePairingCode(code);
     
     if (!code) {
       return res.status(400).json({ error: 'code required' });
     }
     
+    cleanupRelayStore();
     const entry = relayStore.get(code);
     
     if (!entry) {
@@ -235,7 +263,8 @@ router.get('/status', async (req, res) => {
       paired: !!entry.childDeviceId,      // Flutter client checks this field
       claimed: !!entry.childDeviceId,     // Keep for backwards compat
       pairToken: entry.pairToken,
-      childDeviceId: entry.childDeviceId
+      childDeviceId: entry.childDeviceId,
+      expiresIn: Math.max(0, Math.floor((RELAY_TTL_MS - (Date.now() - entry.timestamp)) / 1000))
     });
   } catch (err) {
     console.error('Pair status error:', err);
