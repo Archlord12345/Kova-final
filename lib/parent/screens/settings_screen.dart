@@ -761,8 +761,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildPresetChip('Railway (prod)', 'https://kova-production-3f1f.up.railway.app', urlController),
-                _buildPresetChip('Local :3000', 'http://192.168.1.100:3000', urlController),
+                _buildPresetChip(
+                  'Vercel (main)',
+                  'https://kova-final-git-main-raveliop12345s-projects.vercel.app',
+                  urlController,
+                ),
+                _buildPresetChip(
+                  'Vercel (preview)',
+                  'https://kova-final-h7eumg1nd-raveliop12345s-projects.vercel.app',
+                  urlController,
+                ),
+                _buildPresetChip(
+                  'Railway (prod)',
+                  'https://kova-production-3f1f.up.railway.app',
+                  urlController,
+                ),
+                _buildPresetChip(
+                  'Local :3000',
+                  'http://192.168.1.100:3000',
+                  urlController,
+                ),
                 _buildPresetChip('Emulator', 'http://10.0.2.2:3000', urlController),
               ],
             ),

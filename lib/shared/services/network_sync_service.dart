@@ -27,26 +27,44 @@ class NetworkSyncService {
   NetworkSyncService._();
 
   // ── Configurable relay URL ─────────────────────────────────────────────────
-  // Default: Railway deployment. Can be overridden to local server for demo.
+  // Default: Vercel backend deployment. Can be overridden to local/Render/Railway.
   // Set via: LocalStorage.setString('relay_url', 'http://192.168.x.x:3000')
   static const String _defaultRelayUrl =
+      'https://kova-final-git-main-raveliop12345s-projects.vercel.app';
+  static const String vercelPreviewRelayUrl =
+      'https://kova-final-h7eumg1nd-raveliop12345s-projects.vercel.app';
+  static const String railwayRelayUrl =
       'https://kova-production-3f1f.up.railway.app';
+
+  static String _normalizeRelayUrl(String url) {
+    var normalized = url.trim();
+    if (normalized.isEmpty) return normalized;
+    if (!normalized.startsWith('http://') &&
+        !normalized.startsWith('https://')) {
+      normalized = 'https://$normalized';
+    }
+    while (normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
 
   /// Get the current relay base URL (configurable via settings)
   String get _relayBaseUrl {
-    final custom = LocalStorage.getString('relay_url');
+    final custom = _normalizeRelayUrl(LocalStorage.getString('relay_url'));
     return custom.isNotEmpty ? custom : _defaultRelayUrl;
   }
 
   /// Set a custom relay URL (e.g., local server for demo)
   static Future<void> setRelayUrl(String url) async {
-    await LocalStorage.setString('relay_url', url);
-    debugPrint('🌐 Relay URL set to: $url');
+    final normalized = _normalizeRelayUrl(url);
+    await LocalStorage.setString('relay_url', normalized);
+    debugPrint('🌐 Relay URL set to: $normalized');
   }
 
   /// Get the current relay URL
   static String getRelayUrl() {
-    final custom = LocalStorage.getString('relay_url');
+    final custom = _normalizeRelayUrl(LocalStorage.getString('relay_url'));
     return custom.isNotEmpty ? custom : _defaultRelayUrl;
   }
 

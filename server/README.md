@@ -50,6 +50,7 @@ Le fichier `render.yaml` déclare un service web Node avec :
 
 Le fichier racine `vercel.json` route toutes les requêtes vers `server/src/index.js`, qui exporte l'app Express pour `@vercel/node`.
 
+
 > Note: le relay utilise un store mémoire. C'est adapté à Railway/Render et aux démos Vercel. Pour un Vercel fortement scalé ou sans pertes au cold-start, ajoutez une base externe (`DATABASE_URL`) ou un KV/Redis et adaptez le store relay.
 
 ## Tests
