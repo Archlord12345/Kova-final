@@ -2,10 +2,14 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
+# Nixpacks runs install before copying the full repository. Explicitly include
+# the backend package manifest and lockfile so `npm ci --prefix server` has
+# the files it requires in Railway builds.
+onlyIncludeFiles = ["server/package.json", "server/package-lock.json"]
 cmds = ["npm ci --omit=dev --prefix server"]
 
 [phases.build]
-cmds = []
+cmds = ["echo 'No build step required for Express backend'"]
 
 [start]
 cmd = "npm start --prefix server"

@@ -33,7 +33,8 @@ curl http://127.0.0.1:3000/api/health
 
 Le repo contient `railway.toml`, `railway.json` et `nixpacks.toml` configurés pour installer et démarrer uniquement `server` :
 
-- Build: `npm ci --omit=dev --prefix server`
+- Install: `npm ci --omit=dev --prefix server` (Nixpacks includes `server/package.json` and `server/package-lock.json` before the install layer)
+- Build: no-op (`echo 'No build step required for Express backend'`)
 - Start: `npm start --prefix server`
 - Healthcheck: `/api/health`
 
