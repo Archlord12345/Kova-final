@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: kova-backend
+    env: node
+    rootDir: server
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JSON_BODY_LIMIT
+        value: 256kb
+      - key: MAX_STORED_ALERTS
+        value: 100
+      - key: MAX_STORED_HISTORY
+        value: 500
+      - key: RELAY_TOKEN_TTL_MS
+        value: 604800000
