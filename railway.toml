@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install"
+buildCommand = "npm ci --omit=dev --prefix server"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "npm start --prefix server"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"

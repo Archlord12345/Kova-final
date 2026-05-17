@@ -49,26 +49,52 @@ try {
 const app = express();
 const server = http.createServer(app);
 
+function getCorsOptions() {
+  const rawOrigins = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '';
+  const allowedOrigins = rawOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (allowedOrigins.length === 0 || allowedOrigins.includes('*')) {
+    return { origin: true };
+  }
+
+  return {
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
+  };
+}
+
+const corsOptions = getCorsOptions();
+
 // ── Socket.io setup ──
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow Flutter dev connections
+    origin: process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '*',
     methods: ['GET', 'POST'],
   },
 });
 
 // ── Middleware ──
 app.use(helmet());
-app.use(cors());
-app.use(morgan('dev'));
-app.use(express.json());
+app.use(cors(corsOptions));
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+}
+app.set('trust proxy', 1);
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '256kb' }));
 
 // ── Health check ──
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'kova-server',
+    uptime: process.uptime(),
     mode: dbAvailable ? 'full' : 'relay-only',
+    platform: process.env.RENDER ? 'render' : process.env.RAILWAY_ENVIRONMENT ? 'railway' : process.env.VERCEL ? 'vercel' : 'node',
     timestamp: new Date().toISOString(),
   });
 });
@@ -88,6 +114,7 @@ app.use('/api/alert', alertRouter);
 app.use('/api/history', historyRouter);
 app.use('/api/ack', ackRouter);
 app.use('/api/child', childRouter);
+app.use('/api/relay', require('./routes/relay').healthRouter);
 
 // ── Serve Frontend (only if build exists locally) ──
 const fs = require('fs');
@@ -119,6 +146,7 @@ app.get('/', (req, res) => {
       alert_poll: 'GET /api/alert/poll',
       alert_test: 'POST /api/alert/test',
       alert_debug: 'GET /api/alert/debug/status',
+      relay_health: 'GET /api/relay/health',
     },
     documentation: 'KOVA child protection API. Relay mode works without PostgreSQL.',
   });
@@ -153,6 +181,14 @@ if (require.main === module) {
       console.warn('⚠️  Socket initialization failed (DB may be unavailable):', err.message);
     }
   }
+  const shutdown = (signal) => {
+    console.log(`${signal} received, shutting down gracefully`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════════╗
