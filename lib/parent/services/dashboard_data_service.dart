@@ -153,8 +153,8 @@ class DashboardDataService extends ChangeNotifier {
 
       // 3. Show system notification — CRITICAL for parent awareness
       try {
-        final severity = alert.severity ?? 'medium';
-        final app = alert.app ?? 'Unknown';
+        final severity = alert.severity;
+        final app = alert.app;
         final childName = child?.name ?? 'Your child';
 
         final title = switch (severity) {
@@ -165,7 +165,7 @@ class DashboardDataService extends ChangeNotifier {
         };
 
         final String body;
-        if (alert is NetworkAlertFull && alert.contentPreview != null && alert.contentPreview!.isNotEmpty) {
+        if (alert is NetworkAlertFull && alert.contentPreview.isNotEmpty) {
           body = 'Activité suspecte sur $app: "${alert.contentPreview}"';
         } else {
           body = 'Activité suspecte détectée sur $app. Vérifiez maintenant.';

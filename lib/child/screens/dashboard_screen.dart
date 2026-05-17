@@ -123,7 +123,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
-    final childName = _child?.name ?? 'Alex';
     final score = _child?.score ?? 100;
 
     return Scaffold(
@@ -525,7 +524,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildChartBar(String day, double heightPct, Color color) {
-    final double maxHeight = 100.0;
+    const double maxHeight = 100.0;
     // For future days (0.0 height), give a tiny 4px bar so it doesn't look broken
     final double actualHeight = heightPct == 0.0 ? 4.0 : (heightPct / 100.0) * maxHeight;
 
@@ -594,10 +593,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         child: Stack(
           children: [
-            Positioned(
+            const Positioned(
               top: 0,
               right: 8,
-              child: const Icon(
+              child: Icon(
                 Icons.lock_outline,
                 size: 12,
                 color: Color(0xFF94A3B8),
@@ -642,7 +641,7 @@ class SegmentedRingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final strokeWidth = 14.0;
+    const strokeWidth = 14.0;
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width - strokeWidth) / 2;
     
@@ -663,8 +662,8 @@ class SegmentedRingPainter extends CustomPainter {
 
     // We draw 4 segments. Total active is determined by score.
     // For 92, almost all segments are active. We'll draw 4 arcs with gaps.
-    final int totalSegments = 4;
-    final double gapAngle = 0.3; // radians
+    const int totalSegments = 4;
+    const double gapAngle = 0.3; // radians
     final double sweepAngle = (2 * 3.141592653589793 - (gapAngle * totalSegments)) / totalSegments;
     
     int segmentsToFill = (score / 25).ceil();

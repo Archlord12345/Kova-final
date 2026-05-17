@@ -120,7 +120,7 @@ class _FinalActiveScreenState extends State<FinalActiveScreen> {
                   // Step 1: Create alert in DB
                   final alertRepo = AlertRepository();
                   final alertId = await alertRepo.create(
-                    childId: LocalStorage.getString('child_id') ?? 'test_child',
+                    childId: LocalStorage.getString('child_id'),
                     app: 'com.whatsapp',
                     type: 'grooming',
                     severity: 'critical',
@@ -138,7 +138,7 @@ class _FinalActiveScreenState extends State<FinalActiveScreen> {
                     severity: 'critical',
                     app: 'com.whatsapp',
                     alertType: 'grooming',
-                    childName: LocalStorage.getString('child_name') ?? 'Child',
+                    childName: LocalStorage.getString('child_name'),
                     timestamp: DateTime.now(),
                     aiConfidence: 0.95,
                     contentPreview: 'TEST ALERT — pipeline check',

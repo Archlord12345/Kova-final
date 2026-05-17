@@ -634,8 +634,6 @@ class NetworkSyncService {
     if (_pairToken.isEmpty) return;
     _cryptoService ??= CryptoService(_pairToken);
 
-    bool delivered = false;
-
     // Try Relay first unless offline mode
     if (!isOfflineMode) {
       try {

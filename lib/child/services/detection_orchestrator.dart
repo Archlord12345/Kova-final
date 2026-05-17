@@ -96,12 +96,12 @@ class DetectionOrchestrator {
     _networkAlertSub?.cancel();
     _networkAlertSub = _networkSync.onAlertReceived.listen((alert) {
       if (!_active) return;
-      if (alert.alertType == 'parent_block' && alert.app != null) {
+      if (alert.alertType == 'parent_block') {
         debugPrint('🚫 [CHILD/BG] Received parent block command for ${alert.app}');
-        safeBlockApp(alert.app!);
-      } else if (alert.alertType == 'parent_unblock' && alert.app != null) {
+        safeBlockApp(alert.app);
+      } else if (alert.alertType == 'parent_unblock') {
         debugPrint('🔓 [CHILD/BG] Received parent unblock command for ${alert.app}');
-        unblockApp(alert.app!);
+        unblockApp(alert.app);
       }
     });
 
@@ -681,7 +681,7 @@ class DetectionOrchestrator {
         childName: childName,
         timestamp: DateTime.now(),
         aiConfidence: aiConfidence,
-        contentPreview: contentPreview,
+        contentPreview: contentPreview ?? '',
         scoreText: scoreText,
         scoreGrooming: scoreGrooming,
         scoreDelta: scoreDelta,
@@ -722,7 +722,7 @@ class DetectionOrchestrator {
   }
 
   // ─────────────────────────────────────────────
-  // Package name mapping (shared by _blockApp & _appKeyToPackage)
+  // Package name mapping (shared by safeBlockApp & _appKeyToPackage)
   // ─────────────────────────────────────────────
   static const Map<String, String> _pkgMap = {
     // Messaging
@@ -758,50 +758,6 @@ class DetectionOrchestrator {
 
   /// Resolve an app key to its Android package name
   String? _appKeyToPackage(String appKey) => _pkgMap[appKey];
-
-  /// Block an app using native blocker, persist to DB + in-memory cache
-  Future<void> _blockApp(String app) async {
-    final pkg = _pkgMap[app];
-    if (pkg == null) return;
-
-    // ── 1. Add to in-memory cache immediately (instant enforcement) ──
-    _blockedApps.add(app);
-
-    // ── 2. Persist to database (survives restart) ──
-    if (_childId != null) {
-      try {
-        await _childRepo.setAppBlocked(_childId!, app, true);
-      } catch (e) {
-        if (kDebugMode) debugPrint('⚠️ Failed to persist block for $app: $e');
-      }
-    }
-
-    // ── 3. Trigger native overlay via ForegroundService FIRST ──
-    // The service is always running and can launch activities even when
-    // the Flutter engine / MainActivity is backgrounded or dead.
-    // This fixes the "black flash then disappear" bug caused by MethodChannel
-    // silently failing when the engine isn't in foreground.
-    bool launched = false;
-    try {
-      const platform = MethodChannel('com.kova.child/setup');
-      await platform.invokeMethod('blockAppViaService', {'pkg': pkg});
-      launched = true;
-      if (kDebugMode) debugPrint('🚫 App blocked via ForegroundService: $app ($pkg)');
-    } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ ForegroundService block failed: $e');
-    }
-
-    // Fallback: MethodChannel direct (only if service path failed)
-    if (!launched) {
-      try {
-        const channel = MethodChannel('com.kova.child/blocker');
-        await channel.invokeMethod('blockApp', {'pkg': pkg});
-        if (kDebugMode) debugPrint('🚫 App blocked via MethodChannel fallback: $app ($pkg)');
-      } catch (e) {
-        if (kDebugMode) debugPrint('❌ Both block paths failed for $app: $e');
-      }
-    }
-  }
 
   /// SAFER version of _blockApp with proper error handling and retry logic
   /// This prevents crashes on MIUI and other OEM skins

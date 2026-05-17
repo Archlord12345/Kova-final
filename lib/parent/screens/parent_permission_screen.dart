@@ -100,9 +100,6 @@ class _ParentPermissionScreenState extends State<ParentPermissionScreen>
   bool get _allRequiredGranted =>
       (_status['notifications'] ?? false);
 
-  int get _grantedCount =>
-      _status.values.where((v) => v).length;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -319,7 +316,7 @@ class _ParentPermissionScreenState extends State<ParentPermissionScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_rounded,
+          const Icon(Icons.check_circle_rounded,
               color: KovaColors.success, size: 16),
           const SizedBox(width: 6),
           Text(
@@ -352,7 +349,7 @@ class _ParentPermissionScreenState extends State<ParentPermissionScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.warning_amber_rounded,
+          const Icon(Icons.warning_amber_rounded,
               color: KovaColors.accent, size: 16),
           const SizedBox(width: 6),
           Text(
@@ -494,7 +491,7 @@ class _PermissionItem extends StatelessWidget {
                 color: KovaColors.success.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.check_circle_rounded,
+              child: const Icon(Icons.check_circle_rounded,
                   color: KovaColors.success, size: 24),
             )
           else

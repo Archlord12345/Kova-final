@@ -403,7 +403,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen>
               children: [
                 Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.visibility_rounded,
                       size: 20,
                       color: KovaColors.success,

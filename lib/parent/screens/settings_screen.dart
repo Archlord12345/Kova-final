@@ -998,7 +998,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   severity: selectedSeverity,
                   alertType: 'suspicious_content',
                 );
-                if (!mounted) return;
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(

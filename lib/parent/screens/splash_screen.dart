@@ -94,18 +94,18 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _startPhaseSequence() async {
     // Phase 1: Logo icon appears
     await Future.delayed(const Duration(milliseconds: 200));
-    if (!mounted) return;
+    if (!context.mounted) return;
     setState(() => _phase = 1);
     _logoEntranceCtrl.forward();
 
     // Initialize AppState during logo animation
-    if (!mounted) return;
+    if (!context.mounted) return;
     final appState = context.read<AppState>();
     await appState.init();
 
     // Wait for logo to settle
     await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     // Phase 2: Brand name + tagline
     setState(() => _phase = 2);
@@ -113,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Wait for brand reveal to settle then navigate
     await Future.delayed(const Duration(milliseconds: 2200));
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     // Check if permissions are granted (for parent mode)
     final appMode = LocalStorage.getAppMode();
@@ -123,7 +123,7 @@ class _SplashScreenState extends State<SplashScreen>
     if (appMode == 'parent') {
       if (!allGranted || !permissionsDone) {
         // Show permission screen before dashboard
-        if (!mounted) return;
+        if (!context.mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen>
         );
       } else {
         // All permissions granted — go straight to dashboard
-        if (!mounted) return;
+        if (!context.mounted) return;
         context.go(AppRoutes.parentDashboard);
       }
     } else {
@@ -147,7 +147,7 @@ class _SplashScreenState extends State<SplashScreen>
       final route = appState.isLoggedIn
           ? AppRoutes.parentDashboard
           : AppRoutes.roleSelection;
-      if (!mounted) return;
+      if (!context.mounted) return;
       context.go(route);
     }
   }
